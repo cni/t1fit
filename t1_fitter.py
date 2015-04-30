@@ -90,6 +90,50 @@ class T1_fitter(object):
         return(t1[ind],b[ind],a[ind],resid[ind],ind)
 
 
+def unshuffle_slices(ni, mux, cal_vols=2, ti=None):
+    if ti==None:
+        description = ni._header.get('descrip')
+        vals = description.tostring().split(';')
+        ti = [int(v[3:]) for v in vals if 'ti' in v][0]
+    tr = ni._header.get_zooms()[3] * 1000.
+    ntis = ni.shape[2] / mux
+    num_cal_trs = cal_vols * mux
+    acq = np.mod(np.arange(ntis-1,-1,-1) - num_cal_trs, ntis)
+    sl_acq = np.zeros((ntis,ntis))
+    for sl in range(ntis):
+        sl_acq[sl,:] = np.roll(acq, np.mod(sl,2)*int(round(ntis/2.))+sl/2+1)
+
+    ti_acq = ti + sl_acq*tr/ntis
+
+    d = ni.get_data()
+    d = d[:,:,:,cal_vols:]
+    if d.shape[3]<ntis:
+        print 'WARNING: Too few volumes! zero-padding...'
+        sz = list(d.shape)
+        zero_pad = ntis - sz[3]
+        sz[3] = zero_pad
+        d = np.concatenate((d,np.zeros(sz,dtype=float)*np.nan), axis=3)
+    else:
+        zero_pad = 0
+
+    tis = np.tile(ti_acq,(mux,np.ceil(d.shape[3]/float(ntis))))
+
+    ntimepoints = d.shape[3]
+    d_sort = d[...,ntimepoints-ntis:ntimepoints]
+    tis = tis[:,ntimepoints-ntis:ntimepoints]
+
+    for sl in range(ntis*mux):
+        indx = np.argsort(tis[sl,:])
+        d_sort[:,:,sl,:] = d_sort[:,:,sl,indx]
+
+    ti_sort = np.sort(ti_acq[:,0])
+    # The last measurement is junk due to the slice-shuffling
+    d_sort = d_sort[...,0:ntis-1]
+    ti_sort = ti_sort[0:ntis-1]
+
+    return d_sort,ti_sort
+
+
 if __name__ == '__main__':
     import nibabel as nb
     #from dipy.segment.mask import median_otsu
@@ -97,7 +141,7 @@ if __name__ == '__main__':
     import sys
     import argparse
 
-    # To run the fit loop in main, you'll need my ip_utils gist:
+    # To run the fit loop in main, you'll need ip_utils gist:
     try:
         import ip_utils
     except:
@@ -114,46 +158,65 @@ if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()
     arg_parser.description  = ('Fit T1 using a grid-search.\n\n')
     arg_parser.add_argument('infile', nargs='+', help='path to nifti file with multiple inversion times')
+    arg_parser.add_argument('outbase', default='./t1fitter', help='path and base filename to output files')
     arg_parser.add_argument('-m', '--mask', help='Mask file (nifti) to use. If not provided, a simple mask will be computed.')
     arg_parser.add_argument('-f', '--fwhm', type=float, default=0.0, help='FWHM of the smoothing kernel (default=0.0mm = no smoothing)')
     arg_parser.add_argument('-r', '--t1res', type=float, default=1.0, help='T1 grid-search resolution, in ms (default=1.0ms)')
     arg_parser.add_argument('-n', '--t1min', type=float, default=1.0, help='Minimum T1 to allow (default=1.0ms)')
     arg_parser.add_argument('-x', '--t1max', type=float, default=5000.0, help='Maximum T1 to allow (default=5000.0ms)')
     arg_parser.add_argument('-t', '--ti', type=float, default=[], nargs='+', help='List of inversion times. Must match order and size of input file''s 4th dim. e.g., -t 50.0 400 1200 2400')
+    arg_parser.add_argument('-u', '--unshuffle', action='store_true', help='Unshuffle slices')
+    arg_parser.add_argument('-c', '--cal', type=int, default=2, help='Number of calibration volumes for slice-shuffed data (default=2)')
+    arg_parser.add_argument('-s', '--mux', type=int, default=3, help='Number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
     args = arg_parser.parse_args()
 
+    #p,f = os.path.split(args.infile[0])
+    #basename,ext = (f[0:f.find('.')], f[f.find('.'):])
+    #outfiles = {f:os.path.join(p,basename+'_'+f+ext) for f in ['t1','a','b','res','unshuffled']}
+    outfiles = {f:args.outbase+'_'+f+'.nii.gz' for f in ['t1','a','b','res','unshuffled']}
+
+    tis = None
     if len(args.infile) > 1:
         ni = nb.load(args.infile[0])
-        d = np.zeros(ni.shape[0:3]+(len(args.infile),))
+        data = np.zeros(ni.shape[0:3]+(len(args.infile),))
         for i in xrange(len(args.infile)):
             ni = nb.load(args.infile[i])
-            d[...,i] = np.squeeze(ni.get_data())
+            data[...,i] = np.squeeze(ni.get_data())
     else:
         ni = nb.load(args.infile[0])
-        d = ni.get_data()
-    p,f = os.path.split(args.infile[0])
-    basename,ext = (f[0:f.find('.')], f[f.find('.'):])
-    outfiles = {f:os.path.join(p,basename+'_'+f+ext) for f in ['t1','a','b','res']}
-    tis = args.ti #[50., 280.8, 511.5, 742.3, 973.1, 1203.8, 1434.6, 1665.4, 1896.2, 2126.9, 2357.7, 2588.5]#+230.77
+        if args.unshuffle:
+            data,tis = unshuffle_slices(ni, args.mux, cal_vols=args.cal)
+            print 'Unshuffled slices, saved to %s. TIs: ' % outfiles['unshuffled'], tis.round(1).tolist()
+            niout = nb.Nifti1Image(data, ni.get_affine())
+            nb.save(niout, outfiles['unshuffled'])
+        else:
+            data = ni.get_data()
+
+    if args.ti:
+        tis = args.ti
+    elif tis==None:
+        raise RuntimeError('TIs must be provided on the command line for non-slice-shuffle data!')
 
     if args.fwhm>0:
         import scipy.ndimage as ndimage
         sd = np.array(ni._header.get_zooms()[0:3])/args.fwhm/2.355
         print('Smoothing with %0.1f mm FWHM Gaussian (sigma=[%0.2f,%0.2f,%0.2f] voxels)...' % (tuple([args.fwhm]+sd.tolist())))
-        for i in xrange(d.shape[3]):
-            ndimage.gaussian_filter(d[...,i], sigma=sd, output=d[...,i])
+        for i in xrange(data.shape[3]):
+            ndimage.gaussian_filter(data[...,i], sigma=sd, output=data[...,i])
 
-    if args.mask!=None:
-        mask = nb.load(args.mask).get_data()
-    else:
+    if args.mask==None:
         print('Computing mask...')
-        mn = d.max(3)
+        mn = np.nanmax(data, axis=3)
         try:
             from dipy.segment.mask import median_otsu
             masked_mn, mask = median_otsu(mn, 4, 4)
         except:
             #mn[np.logical_not(mask)]=0
             mask = ip_utils.get_mask(mn, np.percentile(mn, 50))
+    elif args.mask.lower()=='none':
+        mask = np.ones((data.shape[0],data.shape[1],data.shape[2]), dtype=bool)
+    else:
+        mask = nb.load(args.mask).get_data()
 
     brain_inds = np.argwhere(mask) # for testing on some voxels: [0:10000,:]
     t1 = np.zeros(mask.shape, dtype=np.float)
@@ -165,7 +228,14 @@ if __name__ == '__main__':
 
     update_interval = round(brain_inds.shape[0]/20.0)
     for i,c in enumerate(brain_inds):
-        t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit.t1_fit_nlspr(d[c[0],c[1],c[2]])
+        d = data[c[0],c[1],c[2],:]
+        nans = np.isnan(d)
+        if np.any(nans):
+            nn = nans==False
+            fit_nan = T1_fitter(tis[nn], args.t1res, args.t1min, args.t1max)
+            t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit_nan.t1_fit_nlspr(d[nn])
+        else:
+            t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit.t1_fit_nlspr(d)
         if np.mod(i, update_interval)==0:
             progress = int(20.0*i/brain_inds.shape[0]+0.5)
             sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*progress, ' '*(20-progress), progress*5))
