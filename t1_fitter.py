@@ -91,10 +91,18 @@ class T1_fitter(object):
 
 
 def unshuffle_slices(ni, mux, cal_vols=2, ti=None):
-    if ti==None:
+    if not ti:
         description = ni._header.get('descrip')
         vals = description.tostring().split(';')
         ti = [int(v[3:]) for v in vals if 'ti' in v][0]
+        print 'Using TI=%0.2f from description.' % ti
+    else:
+        # ti might be a list, in which case we just need the first ti
+        try:
+            ti = ti[0]
+        except:
+            pass
+        print 'Using TI=%0.2f from argument list.' % ti
     tr = ni._header.get_zooms()[3] * 1000.
     ntis = ni.shape[2] / mux
     num_cal_trs = cal_vols * mux
@@ -164,7 +172,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('-r', '--t1res', type=float, default=1.0, help='T1 grid-search resolution, in ms (default=1.0ms)')
     arg_parser.add_argument('-n', '--t1min', type=float, default=1.0, help='Minimum T1 to allow (default=1.0ms)')
     arg_parser.add_argument('-x', '--t1max', type=float, default=5000.0, help='Maximum T1 to allow (default=5000.0ms)')
-    arg_parser.add_argument('-t', '--ti', type=float, default=[], nargs='+', help='List of inversion times. Must match order and size of input file''s 4th dim. e.g., -t 50.0 400 1200 2400')
+    arg_parser.add_argument('-t', '--ti', type=float, default=[], nargs='+', help='List of inversion times. Must match order and size of input file''s 4th dim. e.g., -t 50.0 400 1200 2400. For slice-shuffed data, you just need to provide the first TI.')
     arg_parser.add_argument('-u', '--unshuffle', action='store_true', help='Unshuffle slices')
     arg_parser.add_argument('-c', '--cal', type=int, default=2, help='Number of calibration volumes for slice-shuffed data (default=2)')
     arg_parser.add_argument('-s', '--mux', type=int, default=3, help='Number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
@@ -175,7 +183,11 @@ if __name__ == '__main__':
     #outfiles = {f:os.path.join(p,basename+'_'+f+ext) for f in ['t1','a','b','res','unshuffled']}
     outfiles = {f:args.outbase+'_'+f+'.nii.gz' for f in ['t1','a','b','res','unshuffled']}
 
-    tis = None
+    if args.ti:
+        tis = args.ti
+    elif not args.unshuffle:
+        raise RuntimeError('TIs must be provided on the command line for non-slice-shuffle data!')
+
     if len(args.infile) > 1:
         ni = nb.load(args.infile[0])
         data = np.zeros(ni.shape[0:3]+(len(args.infile),))
@@ -185,17 +197,12 @@ if __name__ == '__main__':
     else:
         ni = nb.load(args.infile[0])
         if args.unshuffle:
-            data,tis = unshuffle_slices(ni, args.mux, cal_vols=args.cal)
+            data,tis = unshuffle_slices(ni, args.mux, cal_vols=args.cal, ti=args.ti)
             print 'Unshuffled slices, saved to %s. TIs: ' % outfiles['unshuffled'], tis.round(1).tolist()
             niout = nb.Nifti1Image(data, ni.get_affine())
             nb.save(niout, outfiles['unshuffled'])
         else:
             data = ni.get_data()
-
-    if args.ti:
-        tis = args.ti
-    elif tis==None:
-        raise RuntimeError('TIs must be provided on the command line for non-slice-shuffle data!')
 
     if args.fwhm>0:
         import scipy.ndimage as ndimage
