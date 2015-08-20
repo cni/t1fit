@@ -90,7 +90,26 @@ class T1_fitter(object):
         return(t1[ind],b[ind],a[ind],resid[ind],ind)
 
 
-def unshuffle_slices(ni, mux, cal_vols=2, ti=None):
+def resample(img, pixdim=1.5, ref_file=None):
+    d = img.get_data().astype(np.float64)
+    # option to align to reference volume
+    if ref_file!=None:
+        # NOT WORKING! I don't think the dipy registration routine is applying the affine.
+        ref = nb.load(ref_file)
+        mn = nb.Nifti1Image(d.mean(axis=3), img.get_affine())
+        reg = registration.HistogramRegistration(mn, ref, interp='tri')
+        T = reg.optimize('rigid')
+        resamp_xform = np.dot(img.get_affine(), T.inv().as_affine())
+    else:
+        resamp_xform = img.get_affine()
+    try:
+        from dipy.align.aniso2iso import reslice
+    except:
+        from dipy.align.aniso2iso import resample as reslice
+    data,xform = reslice(d, resamp_xform, img.get_header().get_zooms()[:3], [pixdim]*3, order=5)
+    return nb.Nifti1Image(data, xform)
+
+def unshuffle_slices(ni, mux, cal_vols=2, ti=None, keep=None):
     if not ti:
         description = ni._header.get('descrip')
         vals = description.tostring().split(';')
@@ -138,7 +157,9 @@ def unshuffle_slices(ni, mux, cal_vols=2, ti=None):
     # The last measurement is junk due to the slice-shuffling
     d_sort = d_sort[...,0:ntis-1]
     ti_sort = ti_sort[0:ntis-1]
-
+    if keep:
+        d_sort = d_sort[...,keep]
+        ti_sort = ti_sort[keep]
     return d_sort,ti_sort
 
 
@@ -174,8 +195,10 @@ if __name__ == '__main__':
     arg_parser.add_argument('-x', '--t1max', type=float, default=5000.0, help='Maximum T1 to allow (default=5000.0ms)')
     arg_parser.add_argument('-t', '--ti', type=float, default=[], nargs='+', help='List of inversion times. Must match order and size of input file''s 4th dim. e.g., -t 50.0 400 1200 2400. For slice-shuffed data, you just need to provide the first TI.')
     arg_parser.add_argument('-u', '--unshuffle', action='store_true', help='Unshuffle slices')
+    arg_parser.add_argument('-k', '--keep', type=float, default=[], nargs='+', help='indices of the inversion times to use for fitting (default=all)')
     arg_parser.add_argument('-c', '--cal', type=int, default=2, help='Number of calibration volumes for slice-shuffed data (default=2)')
     arg_parser.add_argument('-s', '--mux', type=int, default=3, help='Number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
+    arg_parser.add_argument('-p', '--pixdim', type=float, default=None, help='Resample to a different voxel size (default is to retain input voxel size)')
     args = arg_parser.parse_args()
 
     #p,f = os.path.split(args.infile[0])
@@ -197,11 +220,17 @@ if __name__ == '__main__':
     else:
         ni = nb.load(args.infile[0])
         if args.unshuffle:
-            data,tis = unshuffle_slices(ni, args.mux, cal_vols=args.cal, ti=args.ti)
+            data,tis = unshuffle_slices(ni, args.mux, cal_vols=args.cal, ti=args.ti, keep=args.keep)
             print 'Unshuffled slices, saved to %s. TIs: ' % outfiles['unshuffled'], tis.round(1).tolist()
-            niout = nb.Nifti1Image(data, ni.get_affine())
-            nb.save(niout, outfiles['unshuffled'])
+            ni = nb.Nifti1Image(data, ni.get_affine())
+            if args.pixdim != None:
+                print('Resampling data to %0.1fmm^3 ...' % args.pixdim)
+                ni = resample(ni, args.pixdim)
+                data = ni.get_data()
+            nb.save(ni, outfiles['unshuffled'])
         else:
+            if args.pixdim != None:
+                ni = resample(ni, args.pixdim)
             data = ni.get_data()
 
     if args.fwhm>0:
@@ -223,7 +252,11 @@ if __name__ == '__main__':
     elif args.mask.lower()=='none':
         mask = np.ones((data.shape[0],data.shape[1],data.shape[2]), dtype=bool)
     else:
-        mask = nb.load(args.mask).get_data()
+        mask_ni = nb.load(args.mask)
+        if args.pixdim != None:
+            print('Resampling mask to %0.1fmm^3 ...' % args.pixdim)
+            mask_ni = resample(mask_ni, args.pixdim)
+        mask = mask_ni.get_data()>=0.5
 
     brain_inds = np.argwhere(mask) # for testing on some voxels: [0:10000,:]
     t1 = np.zeros(mask.shape, dtype=np.float)
