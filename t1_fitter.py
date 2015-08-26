@@ -187,7 +187,7 @@ if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()
     arg_parser.description  = ('Fit T1 using a grid-search.\n\n')
     arg_parser.add_argument('infile', nargs='+', help='path to nifti file with multiple inversion times')
-    arg_parser.add_argument('outbase', default='./t1fitter', help='path and base filename to output files')
+    arg_parser.add_argument('-o', '--outbase', default='./t1fitter', help='path and base filename to output files')
     arg_parser.add_argument('-m', '--mask', help='Mask file (nifti) to use. If not provided, a simple mask will be computed.')
     arg_parser.add_argument('-f', '--fwhm', type=float, default=0.0, help='FWHM of the smoothing kernel (default=0.0mm = no smoothing)')
     arg_parser.add_argument('-r', '--t1res', type=float, default=1.0, help='T1 grid-search resolution, in ms (default=1.0ms)')
