@@ -165,24 +165,9 @@ def unshuffle_slices(ni, mux, cal_vols=2, ti=None, keep=None):
 
 if __name__ == '__main__':
     import nibabel as nb
-    #from dipy.segment.mask import median_otsu
     import os
     import sys
     import argparse
-
-    # To run the fit loop in main, you'll need ip_utils gist:
-    try:
-        import ip_utils
-    except:
-        fname = os.path.join(os.path.curdir, 'ip_utils.py')
-        try:
-            execfile(fname)
-        except:
-            print('ip_utils not found. Fetching it from github...')
-            import urllib, shutil
-            local_filename, headers = urllib.urlretrieve('http://gist.github.com/rfdougherty/5548296/raw/ip_utils.py')
-            shutil.move(local_filename, fname)
-            execfile(fname)
 
     arg_parser = argparse.ArgumentParser()
     arg_parser.description  = ('Fit T1 using a grid-search.\n\n')
@@ -247,8 +232,8 @@ if __name__ == '__main__':
             from dipy.segment.mask import median_otsu
             masked_mn, mask = median_otsu(mn, 4, 4)
         except:
-            #mn[np.logical_not(mask)]=0
-            mask = ip_utils.get_mask(mn, np.percentile(mn, 50))
+            print('WARNING: failed to compute a mask. Fitting all voxels.')
+            mask = np.ones(mn.shape, dtype=bool)
     elif args.mask.lower()=='none':
         mask = np.ones((data.shape[0],data.shape[1],data.shape[2]), dtype=bool)
     else:

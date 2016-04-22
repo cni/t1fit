@@ -11,20 +11,6 @@ if __name__ == '__main__':
     import sys
     import argparse
 
-    # To run the fit loop in main, you'll need ip_utils gist:
-    try:
-        import ip_utils
-    except:
-        fname = os.path.join(os.path.curdir, 'ip_utils.py')
-        try:
-            execfile(fname)
-        except:
-            print('ip_utils not found. Fetching it from github...')
-            import urllib, shutil
-            local_filename, headers = urllib.urlretrieve('http://gist.github.com/rfdougherty/5548296/raw/ip_utils.py')
-            shutil.move(local_filename, fname)
-            execfile(fname)
-
     arg_parser = argparse.ArgumentParser()
     arg_parser.description  = ('Fit T1 using a grid-search.\n\n')
     arg_parser.add_argument('infile', nargs='+', help='path to nifti file with multiple inversion times')
