@@ -17,6 +17,10 @@ class T1_fitter(object):
         self.exp_sum = 1. / n * self.the_exp.sum(0).T
         self.rho_norm_vec = np.sum(np.power(self.the_exp,2), 0).T - 1./n*np.power(self.the_exp.sum(0).T,2)
 
+    def __call__(self, d):
+        # Work-aropund for pickle's (and thus multiprocessing's) inability to map a class method.
+        # See http://stackoverflow.com/questions/1816958/cant-pickle-type-instancemethod-when-using-pythons-multiprocessing-pool-ma
+        return self.t1_fit_nlspr(d)
 
     def t1_fit_nls(self, data):
         '''
@@ -182,6 +186,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('-u', '--unshuffle', action='store_true', help='Unshuffle slices')
     arg_parser.add_argument('-k', '--keep', type=float, default=[], nargs='+', help='indices of the inversion times to use for fitting (default=all)')
     arg_parser.add_argument('-c', '--cal', type=int, default=2, help='Number of calibration volumes for slice-shuffed data (default=2)')
+    arg_parser.add_argument('-j', '--jobs', type=int, default=8, help='Number of processors to run for multiprocessing (default=8)')
     arg_parser.add_argument('-s', '--mux', type=int, default=3, help='Number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
     arg_parser.add_argument('-p', '--pixdim', type=float, default=None, help='Resample to a different voxel size (default is to retain input voxel size)')
     args = arg_parser.parse_args()
@@ -251,28 +256,45 @@ if __name__ == '__main__':
     print('Fitting T1 model...')
     fit = T1_fitter(tis, args.t1res, args.t1min, args.t1max)
 
-    update_interval = round(brain_inds.shape[0]/20.0)
-    for i,c in enumerate(brain_inds):
-        d = data[c[0],c[1],c[2],:]
-        nans = np.isnan(d)
-        if np.any(nans):
-            nn = nans==False
-            fit_nan = T1_fitter(tis[nn], args.t1res, args.t1min, args.t1max)
-            t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit_nan.t1_fit_nlspr(d[nn])
-        else:
-            t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit.t1_fit_nlspr(d)
-        if np.mod(i, update_interval)==0:
-            progress = int(20.0*i/brain_inds.shape[0]+0.5)
-            sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*progress, ' '*(20-progress), progress*5))
-            sys.stdout.flush()
-    print(' finished.')
-
-    #from multiprocessing import Pool
-    #p = Pool(12)
-    #dl = [d[c[0],c[1],c[2]] for c in brain_inds]
-    #res = p.map(t1_fit_nlspr, dl, fit.t1_vec, fit.ti_vec, fit.the_exp, fit.exp_sum, fit.rho_norm_vec)
+    #update_interval = round(brain_inds.shape[0]/20.0)
     #for i,c in enumerate(brain_inds):
-    #    t1[c[0],c[1],c[2]] = res[i][0]
+    #    d = data[c[0],c[1],c[2],:]
+    #    nans = np.isnan(d)
+    #    if np.any(nans):
+    #        nn = nans==False
+    #        fit_nan = T1_fitter(tis[nn], args.t1res, args.t1min, args.t1max)
+    #        t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit_nan.t1_fit_nlspr(d[nn])
+    #    else:
+    #        t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit.t1_fit_nlspr(d)
+    #    if np.mod(i, update_interval)==0:
+    #        progress = int(20.0*i/brain_inds.shape[0]+0.5)
+    #        sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*progress, ' '*(20-progress), progress*5))
+    #        sys.stdout.flush()
+    #print(' finished.')
+
+    from multiprocessing import Pool
+    p = Pool(args.jobs)
+
+    args = [data[c[0],c[1],c[2],:] for c in brain_inds]
+    workers = p.map_async(fit, args)
+    update_step = 20
+    update_interval = round(brain_inds.shape[0]/float(update_step))
+    num_updates = 0
+    while not workers.ready():
+        i = brain_inds.shape[0] - workers._number_left * workers._chunksize
+        if i >= update_interval*num_updates:
+            num_updates += 1
+            sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*num_updates, ' '*(update_step-num_updates), num_updates*5))
+            sys.stdout.flush()
+
+    out = workers.get()
+    for i,c in enumerate(brain_inds):
+        t1[c[0],c[1],c[2]] = out[i][0]
+        b[c[0],c[1],c[2]] = out[i][1]
+        a[c[0],c[1],c[2]] = out[i][2]
+        res[c[0],c[1],c[2]] = out[i][3]
+
+    print(' finished.')
 
     ni_out = nb.Nifti1Image(t1, ni.get_affine())
     nb.save(ni_out, outfiles['t1'])
