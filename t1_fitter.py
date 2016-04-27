@@ -172,6 +172,7 @@ if __name__ == '__main__':
     import os
     import sys
     import argparse
+    from multiprocessing import Pool
 
     arg_parser = argparse.ArgumentParser()
     arg_parser.description  = ('Fit T1 using a grid-search.\n\n')
@@ -272,11 +273,10 @@ if __name__ == '__main__':
     #        sys.stdout.flush()
     #print(' finished.')
 
-    from multiprocessing import Pool
     p = Pool(args.jobs)
 
-    args = [data[c[0],c[1],c[2],:] for c in brain_inds]
-    workers = p.map_async(fit, args)
+    work = [data[c[0],c[1],c[2],:] for c in brain_inds]
+    workers = p.map_async(fit, work)
     update_step = 20
     update_interval = round(brain_inds.shape[0]/float(update_step))
     num_updates = 0
