@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import numpy as np
+np.seterr(divide='ignore', invalid='ignore')
 
 class T1_fitter(object):
 
@@ -166,6 +167,44 @@ def unshuffle_slices(ni, mux, cal_vols=2, ti=None, keep=None):
         ti_sort = ti_sort[keep]
     return d_sort,ti_sort
 
+class T1fit_magnitude(object):
+    '''
+    Fit T1 using magnitude images. Less prone to thermal noise.
+    Exclude the data near the null point of the magnetization (default 4 data points)
+    when the number of TI is high, e.g. using slice-shuffling; 
+    reverse the polarity of the data points with TI< TI(null); 
+    fit T1 with the NLS model.
+    '''
+
+    def __init__(self, tis, t1res=1, t1min=1, t1max=5000, ndel=4):
+        self.tis = tis;
+        self.t1res = t1res;
+	self.t1min = t1min;
+	self.t1max = t1max;
+        self.ndel = ndel;
+
+    def __call__(self, d):
+        return self.t1fit_magnitude(d)
+
+    def t1fit_magnitude(self, d):
+        if self.ndel > 0 and self.tis.size >= self.ndel + 4:
+	    indx = np.array(d).argmin()      # find the data point closest to the null
+            indx_to_del = range(indx - int(np.floor(self.ndel/2)) + 1, indx + int(np.ceil(self.ndel/2)) + 1) 
+	    if indx_to_del[0] >= 0 and indx_to_del[-1] < self.tis.size:
+	        tis = np.delete(self.tis, indx_to_del)  
+	        d = np.delete(d, indx_to_del) 
+	        for n in range(indx_to_del[0]):
+	            d[n] = -d[n] 
+	    else:
+	        tis = self.tis
+	        for n in range(indx):
+	            d[n] = -d[n] 
+            fit = T1_fitter(tis, self.t1res, self.t1min, self.t1max)
+	    (t1, b, a, res) = fit.t1_fit_nls(d) 
+        else:
+            fit = T1_fitter(self.tis, self.t1res, self.t1min, self.t1max)
+	    (t1, b, a, res, ind) = fit.t1_fit_nlspr(d)  
+        return (t1, b, a, res)
 
 if __name__ == '__main__':
     import nibabel as nb
@@ -184,6 +223,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('-n', '--t1min', type=float, default=1.0, help='Minimum T1 to allow (default=1.0ms)')
     arg_parser.add_argument('-x', '--t1max', type=float, default=5000.0, help='Maximum T1 to allow (default=5000.0ms)')
     arg_parser.add_argument('-t', '--ti', type=float, default=[], nargs='+', help='List of inversion times. Must match order and size of input file''s 4th dim. e.g., -t 50.0 400 1200 2400. For slice-shuffed data, you just need to provide the first TI.')
+    arg_parser.add_argument('-d', '--delete', type=int, default=4, help='Number of TIs to exclude for fitting T1 (default=4)')
     arg_parser.add_argument('-u', '--unshuffle', action='store_true', help='Unshuffle slices')
     arg_parser.add_argument('-k', '--keep', type=float, default=[], nargs='+', help='indices of the inversion times to use for fitting (default=all)')
     arg_parser.add_argument('-c', '--cal', type=int, default=2, help='Number of calibration volumes for slice-shuffed data (default=2)')
@@ -255,7 +295,7 @@ if __name__ == '__main__':
     b = np.zeros(mask.shape, dtype=np.float)
     res = np.zeros(mask.shape, dtype=np.float)
     print('Fitting T1 model...')
-    fit = T1_fitter(tis, args.t1res, args.t1min, args.t1max)
+    t1fit = T1fit_magnitude(tis, args.t1res, args.t1min, args.t1max, args.delete)
 
     #update_interval = round(brain_inds.shape[0]/20.0)
     #for i,c in enumerate(brain_inds):
@@ -276,7 +316,7 @@ if __name__ == '__main__':
     p = Pool(args.jobs)
 
     work = [data[c[0],c[1],c[2],:] for c in brain_inds]
-    workers = p.map_async(fit, work)
+    workers = p.map_async(t1fit, work)
     update_step = 20
     update_interval = round(brain_inds.shape[0]/float(update_step))
     num_updates = 0
