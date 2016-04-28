@@ -35,7 +35,8 @@ class T1_fitter(object):
         t1,b,a,residual
 
         Based on matlab code written by J. Barral, M. Etezadi-Amoli, E. Gudmundson, and N. Stikov, 2009
-         (c) Board of Trustees, Leland Stanford Junior University
+         (c) Board of Trustees, Leland Stanford Junior University.
+        See their 2010 MRM paper here: http://www.ncbi.nlm.nih.gov/pubmed/20564597.
         '''
         # Make sure data is a column vector
         data = np.matrix(data.ravel()).T
