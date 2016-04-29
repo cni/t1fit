@@ -2,25 +2,104 @@
 
 import numpy as np
 
+#def feval(t1,k,c,ti):
+#    return np.abs( c*(1 - k * np.exp(-ti/t1)) ) ** 2
+#
+#def residuals(x,ti,y):
+#    return y - feval(x[0], x[1], x[2], ti)
+
+import contextlib, cStringIO, sys
+
+@contextlib.contextmanager
+def nostdout():
+
+    '''Prevent print to stdout, but if there was an error then catch it and
+    print the output before raising the error.'''
+
+    saved_stdout = sys.stdout
+    sys.stdout = cStringIO.StringIO()
+    try:
+        yield
+    except Exception:
+        saved_output = sys.stdout
+        sys.stdout = saved_stdout
+        print saved_output.getvalue()
+        raise
+    sys.stdout = saved_stdout
+
 class T1_fitter(object):
 
-    def __init__(self, ti_vec, t1res=1, t1min=1, t1max=5000):
+    def __init__(self, ti_vec, t1res=1, t1min=1, t1max=5000, fit_method='nlspr'):
         '''
         ti_vec: vector of inversion times (len(ti_vec) == len(data)
         t1res: resolution of t1 grid-search (in milliseconds)
         t1min,t1max: min/max t1 for grid search (in milliseconds)
         '''
-        n = len(ti_vec)
-        self.ti_vec = np.matrix(ti_vec, dtype=np.float)
-        self.t1_vec = np.matrix(np.arange(t1min, t1max+t1res, t1res, dtype=np.float))
-        self.the_exp = np.exp(-self.ti_vec.T * np.matrix(1/self.t1_vec))
-        self.exp_sum = 1. / n * self.the_exp.sum(0).T
-        self.rho_norm_vec = np.sum(np.power(self.the_exp,2), 0).T - 1./n*np.power(self.the_exp.sum(0).T,2)
+        self.fit_method = fit_method
+        self.t1_min = 1
+        self.t1_max = 5000
+        if self.fit_method.startswith('nls'):
+            self.ti_vec = np.matrix(ti_vec, dtype=np.float)
+            n = len(ti_vec)
+            self.t1_vec = np.matrix(np.arange(t1min, t1max+t1res, t1res, dtype=np.float))
+            self.the_exp = np.exp(-self.ti_vec.T * np.matrix(1/self.t1_vec))
+            self.exp_sum = 1. / n * self.the_exp.sum(0).T
+            self.rho_norm_vec = np.sum(np.power(self.the_exp,2), 0).T - 1./n*np.power(self.the_exp.sum(0).T,2)
+        elif self.fit_method=='lm':
+            self.ti_vec = np.array(ti_vec, dtype=np.float)
 
     def __call__(self, d):
         # Work-aropund for pickle's (and thus multiprocessing's) inability to map a class method.
         # See http://stackoverflow.com/questions/1816958/cant-pickle-type-instancemethod-when-using-pythons-multiprocessing-pool-ma
-        return self.t1_fit_nlspr(d)
+        if self.fit_method=='nlspr':
+            return self.t1_fit_nlspr(d)
+        elif self.fit_method=='lm':
+            return self.t1_fit_lm(d)
+
+    def t1_fit_lm(self, data):
+        '''
+        Finds estimates of T1, a, and b using multi-dimensional
+        Levenberg-Marquardt algorithm. The model |c*(1-k*exp(-t/T1))|^2
+        is used: only one phase term (c), and data are magnitude-squared.
+        The residual is the rms error between the data and the fit.
+
+        INPUT:
+        data: the data to estimate from (1d vector)
+
+        RETURNS:
+        t1,k,c,residual
+
+        '''
+        from scipy.optimize import leastsq
+        # Make sure data is a 1d vector
+        data = np.array(data.ravel())
+        n = data.shape[0]
+
+        # Initialize fit values:
+        # T1 tarting value is hard-coded here (TODO: something better! Quick coarse grid search using nlspr?)
+        # k should be around 1 - cos(flip_angle) = 2
+        # |c| is set to the sqrt of the data at the longest TI
+        max_val = np.sqrt(np.abs(data[np.argmax(self.ti_vec)]))
+        x0 = np.array([900., 2., max_val])
+
+        predicted = lambda t1,k,c,ti: np.abs( c*(1 - k * np.exp(-ti/t1)) ) ** 2
+        residuals = lambda x,ti,y: y - predicted(x[0], x[1], x[2], ti)
+        err = lambda x,ti,y: np.sum(residuals(x,ti,y)**2)
+        x,extra = leastsq(residuals, x0, args=(self.ti_vec.T,data))
+        # NOTE: I tried minimize with two different bounded search algorithms (SLSQP and L-BFGS-B), but neither worked very well.
+        # An unbounded leastsq fit with subsequent clipping of crazy fit values seems to be the fastest and most robust.
+        #x0_bounds = [[0.,5000.],[None,None],[0.,max_val*10.]]
+        #res = minimize(err, x0, args=(self.ti_vec.T,data), method='L-BFGS-B', bounds=x0_bounds, options={'disp':False, 'iprint':1, 'maxiter':100, 'ftol':1e-06})
+
+        t1 = x[0].clip(self.t1_min, self.t1_max)
+        k = x[1]
+        c = x[2]
+
+        # Compute the residual
+        y_hat = predicted(t1, k, c, self.ti_vec)
+        residual = 1. / np.sqrt(n) * np.sqrt(np.power(1 - y_hat / data.T, 2).sum())
+
+        return(t1,k,c,residual)
 
     def t1_fit_nls(self, data):
         '''
@@ -180,6 +259,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('infile', nargs='+', help='path to nifti file with multiple inversion times')
     arg_parser.add_argument('-o', '--outbase', default='./t1fitter', help='path and base filename to output files')
     arg_parser.add_argument('-m', '--mask', help='Mask file (nifti) to use. If not provided, a simple mask will be computed.')
+    arg_parser.add_argument('-e', '--err_method', default='nlspr', help='Error minimization method. Current options are "nlspr","lm". Default is nlspr.')
     arg_parser.add_argument('-f', '--fwhm', type=float, default=0.0, help='FWHM of the smoothing kernel (default=0.0mm = no smoothing)')
     arg_parser.add_argument('-r', '--t1res', type=float, default=1.0, help='T1 grid-search resolution, in ms (default=1.0ms)')
     arg_parser.add_argument('-n', '--t1min', type=float, default=1.0, help='Minimum T1 to allow (default=1.0ms)')
@@ -256,46 +336,47 @@ if __name__ == '__main__':
     b = np.zeros(mask.shape, dtype=np.float)
     res = np.zeros(mask.shape, dtype=np.float)
     print('Fitting T1 model...')
-    fit = T1_fitter(tis, args.t1res, args.t1min, args.t1max)
+    fit = T1_fitter(tis, args.t1res, args.t1min, args.t1max, args.err_method)
 
-    #update_interval = round(brain_inds.shape[0]/20.0)
-    #for i,c in enumerate(brain_inds):
-    #    d = data[c[0],c[1],c[2],:]
-    #    nans = np.isnan(d)
-    #    if np.any(nans):
-    #        nn = nans==False
-    #        fit_nan = T1_fitter(tis[nn], args.t1res, args.t1min, args.t1max)
-    #        t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit_nan.t1_fit_nlspr(d[nn])
-    #    else:
-    #        t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit.t1_fit_nlspr(d)
-    #    if np.mod(i, update_interval)==0:
-    #        progress = int(20.0*i/brain_inds.shape[0]+0.5)
-    #        sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*progress, ' '*(20-progress), progress*5))
-    #        sys.stdout.flush()
-    #print(' finished.')
-
-    p = Pool(args.jobs)
-
-    work = [data[c[0],c[1],c[2],:] for c in brain_inds]
-    workers = p.map_async(fit, work)
     update_step = 20
     update_interval = round(brain_inds.shape[0]/float(update_step))
-    num_updates = 0
-    while not workers.ready():
-        i = brain_inds.shape[0] - workers._number_left * workers._chunksize
-        if i >= update_interval*num_updates:
-            num_updates += 1
-            sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*num_updates, ' '*(update_step-num_updates), num_updates*5))
-            sys.stdout.flush()
 
-    out = workers.get()
-    for i,c in enumerate(brain_inds):
-        t1[c[0],c[1],c[2]] = out[i][0]
-        b[c[0],c[1],c[2]] = out[i][1]
-        a[c[0],c[1],c[2]] = out[i][2]
-        res[c[0],c[1],c[2]] = out[i][3]
+    if args.jobs<2:
+        for i,c in enumerate(brain_inds):
+            d = data[c[0],c[1],c[2],:]
+            nans = np.isnan(d)
+            if np.any(nans):
+                nn = nans==False
+                fit_nan = T1_fitter(tis[nn], args.t1res, args.t1min, args.t1max)
+                t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit_nan(d[nn])
+            else:
+                t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit(d)
+            if np.mod(i, update_interval)==0:
+                progress = int(update_step*i/brain_inds.shape[0]+0.5)
+                sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*progress, ' '*(update_step-progress), progress*5))
+                sys.stdout.flush()
+        print(' finished.')
+    else:
+        p = Pool(args.jobs)
 
-    print(' finished.')
+        work = [data[c[0],c[1],c[2],:] for c in brain_inds]
+        workers = p.map_async(fit, work)
+        num_updates = 0
+        while not workers.ready():
+            i = brain_inds.shape[0] - workers._number_left * workers._chunksize
+            if i >= update_interval*num_updates:
+                num_updates += 1
+                sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*num_updates, ' '*(update_step-num_updates), num_updates*5))
+                sys.stdout.flush()
+
+        out = workers.get()
+        for i,c in enumerate(brain_inds):
+            t1[c[0],c[1],c[2]] = out[i][0]
+            b[c[0],c[1],c[2]] = out[i][1]
+            a[c[0],c[1],c[2]] = out[i][2]
+            res[c[0],c[1],c[2]] = out[i][3]
+
+        print(' finished.')
 
     ni_out = nb.Nifti1Image(t1, ni.get_affine())
     nb.save(ni_out, outfiles['t1'])
