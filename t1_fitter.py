@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import numpy as np
+np.seterr(divide='ignore', invalid='ignore')
 
 #def feval(t1,k,c,ti):
 #    return np.abs( c*(1 - k * np.exp(-ti/t1)) ) ** 2
@@ -29,30 +30,40 @@ def nostdout():
 
 class T1_fitter(object):
 
-    def __init__(self, ti_vec, t1res=1, t1min=1, t1max=5000, fit_method='nlspr'):
+    def __init__(self, ti_vec, t1res=1, t1min=1, t1max=5000, fit_method='mag', ndel=4):
         '''
         ti_vec: vector of inversion times (len(ti_vec) == len(data)
         t1res: resolution of t1 grid-search (in milliseconds)
         t1min,t1max: min/max t1 for grid search (in milliseconds)
         '''
-        self.fit_method = fit_method
-        self.t1_min = 1
-        self.t1_max = 5000
-        if self.fit_method.startswith('nls'):
-            self.ti_vec = np.matrix(ti_vec, dtype=np.float)
-            n = len(ti_vec)
-            self.t1_vec = np.matrix(np.arange(t1min, t1max+t1res, t1res, dtype=np.float))
-            self.the_exp = np.exp(-self.ti_vec.T * np.matrix(1/self.t1_vec))
-            self.exp_sum = 1. / n * self.the_exp.sum(0).T
-            self.rho_norm_vec = np.sum(np.power(self.the_exp,2), 0).T - 1./n*np.power(self.the_exp.sum(0).T,2)
-        elif self.fit_method=='lm':
+        self.fit_method = fit_method.lower()
+        self.t1min = t1min
+        self.t1max = t1max
+        self.t1res = t1res
+        self.ndel = ndel
+        if self.fit_method=='nlspr' or self.fit_method=='mag':
+            self.init_nls(ti_vec)
+        else:
             self.ti_vec = np.array(ti_vec, dtype=np.float)
+
+    def init_nls(self, new_tis=None):
+        if new_tis is not None:
+            self.ti_vec = np.matrix(new_tis, dtype=np.float)
+        #else:
+        #    self.ti_vec = np.matrix(self.ti_vec, dtype=np.float)
+        n = self.ti_vec.size
+        self.t1_vec = np.matrix(np.arange(self.t1min, self.t1max+self.t1res, self.t1res, dtype=np.float))
+        self.the_exp = np.exp(-self.ti_vec.T * np.matrix(1/self.t1_vec))
+        self.exp_sum = 1. / n * self.the_exp.sum(0).T
+        self.rho_norm_vec = np.sum(np.power(self.the_exp,2), 0).T - 1./n*np.power(self.the_exp.sum(0).T,2)
 
     def __call__(self, d):
         # Work-aropund for pickle's (and thus multiprocessing's) inability to map a class method.
         # See http://stackoverflow.com/questions/1816958/cant-pickle-type-instancemethod-when-using-pythons-multiprocessing-pool-ma
         if self.fit_method=='nlspr':
             return self.t1_fit_nlspr(d)
+        elif self.fit_method=='mag':
+            return self.t1_fit_magnitude(d)
         elif self.fit_method=='lm':
             return self.t1_fit_lm(d)
 
@@ -91,7 +102,7 @@ class T1_fitter(object):
         #x0_bounds = [[0.,5000.],[None,None],[0.,max_val*10.]]
         #res = minimize(err, x0, args=(self.ti_vec.T,data), method='L-BFGS-B', bounds=x0_bounds, options={'disp':False, 'iprint':1, 'maxiter':100, 'ftol':1e-06})
 
-        t1 = x[0].clip(self.t1_min, self.t1_max)
+        t1 = x[0].clip(self.t1min, self.t1max)
         k = x[1]
         c = x[2]
 
@@ -173,6 +184,24 @@ class T1_fitter(object):
 
         return(t1[ind],b[ind],a[ind],resid[ind],ind)
 
+    def t1_fit_magnitude(self, data):
+        if self.ndel > 0 and self.ti_vec.size >= self.ndel + 4:
+            indx = data.argmin()      # find the data point closest to the null
+            indx_to_del = range(indx - int(np.floor(self.ndel/2)) + 1, indx + int(np.ceil(self.ndel/2)) + 1)
+            if indx_to_del[0] >= 0 and indx_to_del[-1] < self.ti_vec.size:
+                tis = np.delete(self.ti_vec, indx_to_del)
+                data = np.delete(data, indx_to_del)
+                for n in range(indx_to_del[0]):
+                    data[n] = -data[n]
+            else:
+                tis = self.ti_vec
+                for n in range(indx):
+                    data[n] = -data[n]
+            fit.init_nls(tis)
+            (t1, b, a, res) = fit.t1_fit_nls(data)
+        else:
+            (t1, b, a, res, ind) = fit.t1_fit_nlspr(data)
+        return (t1, b, a, res)
 
 def resample(img, pixdim=1.5, ref_file=None):
     d = img.get_data().astype(np.float64)
@@ -259,12 +288,13 @@ if __name__ == '__main__':
     arg_parser.add_argument('infile', nargs='+', help='path to nifti file with multiple inversion times')
     arg_parser.add_argument('-o', '--outbase', default='./t1fitter', help='path and base filename to output files')
     arg_parser.add_argument('-m', '--mask', help='Mask file (nifti) to use. If not provided, a simple mask will be computed.')
-    arg_parser.add_argument('-e', '--err_method', default='nlspr', help='Error minimization method. Current options are "nlspr","lm". Default is nlspr.')
+    arg_parser.add_argument('-e', '--err_method', default='nlspr', help='Error minimization method. Current options are "nlspr","mag","lm". Default is nlspr.')
     arg_parser.add_argument('-f', '--fwhm', type=float, default=0.0, help='FWHM of the smoothing kernel (default=0.0mm = no smoothing)')
     arg_parser.add_argument('-r', '--t1res', type=float, default=1.0, help='T1 grid-search resolution, in ms (default=1.0ms)')
     arg_parser.add_argument('-n', '--t1min', type=float, default=1.0, help='Minimum T1 to allow (default=1.0ms)')
     arg_parser.add_argument('-x', '--t1max', type=float, default=5000.0, help='Maximum T1 to allow (default=5000.0ms)')
     arg_parser.add_argument('-t', '--ti', type=float, default=[], nargs='+', help='List of inversion times. Must match order and size of input file''s 4th dim. e.g., -t 50.0 400 1200 2400. For slice-shuffed data, you just need to provide the first TI.')
+    arg_parser.add_argument('-d', '--delete', type=int, default=4, help='Number of TIs to exclude for fitting T1 (default=4)')
     arg_parser.add_argument('-u', '--unshuffle', action='store_true', help='Unshuffle slices')
     arg_parser.add_argument('-k', '--keep', type=float, default=[], nargs='+', help='indices of the inversion times to use for fitting (default=all)')
     arg_parser.add_argument('-c', '--cal', type=int, default=2, help='Number of calibration volumes for slice-shuffed data (default=2)')
@@ -336,7 +366,23 @@ if __name__ == '__main__':
     b = np.zeros(mask.shape, dtype=np.float)
     res = np.zeros(mask.shape, dtype=np.float)
     print('Fitting T1 model...')
-    fit = T1_fitter(tis, args.t1res, args.t1min, args.t1max, args.err_method)
+    fit = T1_fitter(tis, args.t1res, args.t1min, args.t1max, args.err_method, args.delete)
+
+    #update_interval = round(brain_inds.shape[0]/20.0)
+    #for i,c in enumerate(brain_inds):
+    #    d = data[c[0],c[1],c[2],:]
+    #    nans = np.isnan(d)
+    #    if np.any(nans):
+    #        nn = nans==False
+    #        fit_nan = T1_fitter(tis[nn], args.t1res, args.t1min, args.t1max)
+    #        t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit_nan.t1_fit_nlspr(d[nn])
+    #    else:
+    #        t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit.t1_fit_nlspr(d)
+    #    if np.mod(i, update_interval)==0:
+    #        progress = int(20.0*i/brain_inds.shape[0]+0.5)
+    #        sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*progress, ' '*(20-progress), progress*5))
+    #        sys.stdout.flush()
+    #print(' finished.')
 
     update_step = 20
     update_interval = round(brain_inds.shape[0]/float(update_step))
@@ -358,7 +404,6 @@ if __name__ == '__main__':
         print(' finished.')
     else:
         p = Pool(args.jobs)
-
         work = [data[c[0],c[1],c[2],:] for c in brain_inds]
         workers = p.map_async(fit, work)
         num_updates = 0
