@@ -90,11 +90,11 @@ class T1_fitter(object):
         # T1 tarting value is hard-coded here (TODO: something better! Quick coarse grid search using nlspr?)
         # k should be around 1 - cos(flip_angle) = 2
         # |c| is set to the sqrt of the data at the longest TI
-        max_val = np.sqrt(np.abs(data[np.argmax(self.ti_vec)]))
+        max_val = (np.abs(data[np.argmax(self.ti_vec)]))
         x0 = np.array([900., 2., max_val])
 
         predicted = lambda t1,k,c,ti: np.abs( c*(1 - k * np.exp(-ti/t1)) ) ** 2
-        residuals = lambda x,ti,y: y - predicted(x[0], x[1], x[2], ti)
+        residuals = lambda x,ti,y: y**2 - predicted(x[0], x[1], x[2], ti)
         err = lambda x,ti,y: np.sum(residuals(x,ti,y)**2)
         x,extra = leastsq(residuals, x0, args=(self.ti_vec.T,data))
         # NOTE: I tried minimize with two different bounded search algorithms (SLSQP and L-BFGS-B), but neither worked very well.
