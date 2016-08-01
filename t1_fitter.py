@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import numpy as np
-np.seterr(divide='ignore', invalid='ignore')
+np.seterr(all='ignore')
 
 #def feval(t1,k,c,ti):
 #    return np.abs( c*(1 - k * np.exp(-ti/t1)) ) ** 2
@@ -94,8 +94,8 @@ class T1_fitter(object):
         x0 = np.array([900., 2., max_val])
 
         predicted = lambda t1,k,c,ti: np.abs( c*(1 - k * np.exp(-ti/t1)) ) ** 2
-        residuals = lambda x,ti,y: y**2 - predicted(x[0], x[1], x[2], ti)
-        err = lambda x,ti,y: np.sum(residuals(x,ti,y)**2)
+        residuals = lambda x,ti,y: y - np.sqrt(predicted(x[0], x[1], x[2], ti))
+        #err = lambda x,ti,y: np.sum(np.abs(residuals(x,ti,y)))
         x,extra = leastsq(residuals, x0, args=(self.ti_vec.T,data))
         # NOTE: I tried minimize with two different bounded search algorithms (SLSQP and L-BFGS-B), but neither worked very well.
         # An unbounded leastsq fit with subsequent clipping of crazy fit values seems to be the fastest and most robust.
@@ -253,6 +253,7 @@ def unshuffle_slices(ni, mux, cal_vols=2, ti=None, keep=None):
         zero_pad = ntis - sz[3]
         sz[3] = zero_pad
         d = np.concatenate((d,np.zeros(sz,dtype=float)*np.nan), axis=3)
+        #d[...,0:2] = np.zeros((sz[0],sz[1],sz[2],2),dtype=float)*np.nan
     else:
         zero_pad = 0
 
@@ -334,7 +335,7 @@ if __name__ == '__main__':
             if args.pixdim != None:
                 ni = resample(ni, args.pixdim)
             data = ni.get_data()
-
+    
     if args.fwhm>0:
         import scipy.ndimage as ndimage
         sd = np.array(ni._header.get_zooms()[0:3])/args.fwhm/2.355
@@ -393,10 +394,10 @@ if __name__ == '__main__':
             nans = np.isnan(d)
             if np.any(nans):
                 nn = nans==False
-                fit_nan = T1_fitter(tis[nn], args.t1res, args.t1min, args.t1max)
-                t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit_nan(d[nn])
+                fit_nan = T1_fitter(tis[nn], args.t1res, args.t1min, args.t1max, args.err_method, args.delete)
+                t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]] = fit_nan(d[nn])
             else:
-                t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit(d)
+                t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]] = fit(d)
             if np.mod(i, update_interval)==0:
                 progress = int(update_step*i/brain_inds.shape[0]+0.5)
                 sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*progress, ' '*(update_step-progress), progress*5))
