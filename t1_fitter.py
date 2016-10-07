@@ -66,6 +66,8 @@ class T1_fitter(object):
             return self.t1_fit_magnitude(d)
         elif self.fit_method=='lm':
             return self.t1_fit_lm(d)
+        elif self.fit_method=='nls':
+            return self.t1_fit_nls(d)
 
     def t1_fit_lm(self, data):
         '''
@@ -222,7 +224,7 @@ def resample(img, pixdim=1.5, ref_file=None):
     data,xform = reslice(d, resamp_xform, img.get_header().get_zooms()[:3], [pixdim]*3, order=5)
     return nb.Nifti1Image(data, xform)
 
-def unshuffle_slices(ni, mux, cal_vols=2, ti=None, keep=None):
+def unshuffle_slices(ni, mux, cal_vols=2, ti=None, tr=None, keep=None):
     if not ti:
         description = ni._header.get('descrip')
         vals = description.tostring().split(';')
@@ -235,7 +237,10 @@ def unshuffle_slices(ni, mux, cal_vols=2, ti=None, keep=None):
         except:
             pass
         print 'Using TI=%0.2f from argument list.' % ti
-    tr = ni._header.get_zooms()[3] * 1000.
+
+    if not tr:
+        tr = ni._header.get_zooms()[3] * 1000.
+    
     ntis = ni.shape[2] / mux
     num_cal_trs = cal_vols * mux
     acq = np.mod(np.arange(ntis-1,-1,-1) - num_cal_trs, ntis)
@@ -294,6 +299,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('-r', '--t1res', type=float, default=1.0, help='T1 grid-search resolution, in ms (default=1.0ms)')
     arg_parser.add_argument('-n', '--t1min', type=float, default=1.0, help='Minimum T1 to allow (default=1.0ms)')
     arg_parser.add_argument('-x', '--t1max', type=float, default=5000.0, help='Maximum T1 to allow (default=5000.0ms)')
+    arg_parser.add_argument('--tr', type=float, default=[], help='TR of the slice-shuffled scan (in ms).')
     arg_parser.add_argument('-t', '--ti', type=float, default=[], nargs='+', help='List of inversion times. Must match order and size of input file''s 4th dim. e.g., -t 50.0 400 1200 2400. For slice-shuffed data, you just need to provide the first TI.')
     arg_parser.add_argument('-d', '--delete', type=int, default=4, help='Number of TIs to exclude for fitting T1 (default=4)')
     arg_parser.add_argument('-u', '--unshuffle', action='store_true', help='Unshuffle slices')
@@ -323,7 +329,7 @@ if __name__ == '__main__':
     else:
         ni = nb.load(args.infile[0])
         if args.unshuffle:
-            data,tis = unshuffle_slices(ni, args.mux, cal_vols=args.cal, ti=args.ti, keep=args.keep)
+            data,tis = unshuffle_slices(ni, args.mux, cal_vols=args.cal, ti=args.ti, tr=args.tr, keep=args.keep)
             print 'Unshuffled slices, saved to %s. TIs: ' % outfiles['unshuffled'], tis.round(1).tolist()
             ni = nb.Nifti1Image(data, ni.get_affine())
             if args.pixdim != None:
@@ -335,6 +341,8 @@ if __name__ == '__main__':
             if args.pixdim != None:
                 ni = resample(ni, args.pixdim)
             data = ni.get_data()
+
+    #data = np.abs(data - 100)
     
     if args.fwhm>0:
         import scipy.ndimage as ndimage
