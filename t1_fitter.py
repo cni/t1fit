@@ -41,7 +41,7 @@ class T1_fitter(object):
         self.t1max = t1max
         self.t1res = t1res
         self.ndel = ndel
-        if self.fit_method=='nlspr' or self.fit_method=='mag':
+        if self.fit_method=='nlspr' or self.fit_method=='mag' or self.fit_method=='nls':
             self.init_nls(ti_vec)
         else:
             self.ti_vec = np.array(ti_vec, dtype=np.float)
@@ -241,8 +241,9 @@ def unshuffle_slices(ni, mux, cal_vols=2, ti=None, tr=None, keep=None):
     if not tr:
         tr = ni._header.get_zooms()[3] * 1000.
     
+    phase_cycle_num = 2
     ntis = ni.shape[2] / mux
-    num_cal_trs = cal_vols * mux
+    num_cal_trs = phase_cycle_num * mux
     acq = np.mod(np.arange(ntis-1,-1,-1) - num_cal_trs, ntis)
     sl_acq = np.zeros((ntis,ntis))
     for sl in range(ntis):
@@ -308,6 +309,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('-j', '--jobs', type=int, default=8, help='Number of processors to run for multiprocessing (default=8)')
     arg_parser.add_argument('-s', '--mux', type=int, default=3, help='Number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
     arg_parser.add_argument('-p', '--pixdim', type=float, default=None, help='Resample to a different voxel size (default is to retain input voxel size)')
+    arg_parser.add_argument('-b', '--bet_frac', type=float, default=0.5, help='bet fraction for FSL''s bet function (default is 0.5)')
     args = arg_parser.parse_args()
 
     #p,f = os.path.split(args.infile[0])
@@ -315,19 +317,21 @@ if __name__ == '__main__':
     #outfiles = {f:os.path.join(p,basename+'_'+f+ext) for f in ['t1','a','b','res','unshuffled']}
     outfiles = {f:args.outbase+'_'+f+'.nii.gz' for f in ['t1','a','b','res','unshuffled']}
 
+    ni = nb.load(args.infile[0])
     if args.ti:
         tis = args.ti
+        if len(tis) == 1 and args.tr != None and not args.unshuffle:
+            tis = args.ti + args.tr * np.arange(ni.shape[2]/args.mux - 1) / (ni.shape[2]/args.mux)
+            print 'TIs: ', tis.round(1).tolist()
     elif not args.unshuffle:
         raise RuntimeError('TIs must be provided on the command line for non-slice-shuffle data!')
 
     if len(args.infile) > 1:
-        ni = nb.load(args.infile[0])
         data = np.zeros(ni.shape[0:3]+(len(args.infile),))
         for i in xrange(len(args.infile)):
             ni = nb.load(args.infile[i])
             data[...,i] = np.squeeze(ni.get_data())
     else:
-        ni = nb.load(args.infile[0])
         if args.unshuffle:
             data,tis = unshuffle_slices(ni, args.mux, cal_vols=args.cal, ti=args.ti, tr=args.tr, keep=args.keep)
             print 'Unshuffled slices, saved to %s. TIs: ' % outfiles['unshuffled'], tis.round(1).tolist()
@@ -355,8 +359,11 @@ if __name__ == '__main__':
         print('Computing mask...')
         mn = np.nanmax(data, axis=3)
         try:
-            from dipy.segment.mask import median_otsu
-            masked_mn, mask = median_otsu(mn, 4, 4)
+            #from dipy.segment.mask import median_otsu
+            #masked_mn, mask = median_otsu(mn, 4, 4)
+            from nipype.interfaces import fsl
+            fsl.BET(in_file=args.infile[0], frac=args.bet_frac, mask=True, no_output=False, out_file=args.outbase+'_brain').run()
+            mask = nb.load(args.outbase+'_brain_mask.nii.gz').get_data()>=0.5
         except:
             print('WARNING: failed to compute a mask. Fitting all voxels.')
             mask = np.ones(mn.shape, dtype=bool)
