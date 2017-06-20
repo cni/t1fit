@@ -3,11 +3,6 @@
 import numpy as np
 np.seterr(all='ignore')
 
-#def feval(t1,k,c,ti):
-#    return np.abs( c*(1 - k * np.exp(-ti/t1)) ) ** 2
-#
-#def residuals(x,ti,y):
-#    return y - feval(x[0], x[1], x[2], ti)
 
 import contextlib, cStringIO, sys
 
@@ -66,9 +61,11 @@ class T1_fitter(object):
             return self.t1_fit_magnitude(d)
         elif self.fit_method=='lm':
             return self.t1_fit_lm(d)
+        elif self.fit_method=='ctk':
+            return self.t1_fit_with_ctk(d)
         elif self.fit_method=='nls':
             return self.t1_fit_nls(d)
-
+        
     def t1_fit_lm(self, data):
         '''
         Finds estimates of T1, a, and b using multi-dimensional
@@ -149,7 +146,6 @@ class T1_fitter(object):
 
         # Compute the residual
         model_val = a_hat + b_hat * np.exp(-self.ti_vec / t1_hat)
-        # residual = 1/sqrt(nlsS.N) * norm(1 - modelValue./data);
         residual = 1. / np.sqrt(n) * np.sqrt(np.power(1 - model_val / data.T, 2).sum())
 
         return(t1_hat,b_hat,a_hat,residual)
@@ -199,12 +195,78 @@ class T1_fitter(object):
                 tis = self.ti_vec
                 for n in range(indx):
                     data[n] = -data[n]
-            fit.init_nls(tis)
+            fit = T1_fitter(tis, fit_method='mag', t1min=self.t1min, t1max=self.t1max, t1res=self.t1res, ndel=self.ndel)
             (t1, b, a, res) = fit.t1_fit_nls(data)
         else:
-            (t1, b, a, res, ind) = fit.t1_fit_nlspr(data)
+            (t1, b, a, res, ind) = self.t1_fit_nlspr(data)
         return (t1, b, a, res)
+    
+    def t1_fit_with_ctk(self, data):
+        '''
+        Finds estimates of T1, a, b and slice crosstalk using multi-dimensional
+        Trust Region Reflective algorithm. The model |c*(1-k*exp(-t/T1))|
+        is used, and corrected for slice crosstalk effect on the magnetization.
+        The residual is the rms error between the data and the fit.
 
+        INPUT:
+        data: the data to estimate from (1d vector)
+
+        RETURNS:
+        t1,k,c,residual,crosstalk
+
+        '''
+        from scipy.optimize import least_squares
+        # Make sure data is a 1d vector
+        data = np.array(data.ravel())
+        n = data.shape[0]
+
+        # Initialize fit values:
+        # T1 tarting value is hard-coded here (TODO: something better! Quick coarse grid search using nlspr?)
+        # k should be around 1 - cos(flip_angle) = 2
+        # |c| is set to the sqrt of the data at the longest TI
+        max_val = np.max(data)
+        min_val = np.min(data)
+        x0 = np.array([900., 2., max_val, 0.1])
+        lb = [1., 1., min_val, 0.01]
+        ub = [5000., 2., max_val*2+1, 0.2]
+        
+        residuals = lambda x,y: y - (self.t1_model_with_ctk(x[0], x[1], x[2], x[3]))
+        lsqresult = least_squares(residuals, x0,  bounds=(lb,ub), loss='linear', args=(data,))
+
+        t1 = lsqresult.x[0].clip(self.t1min, self.t1max)
+        k = lsqresult.x[1]
+        c = lsqresult.x[2]
+        ctk = lsqresult.x[3]
+
+        # Compute the residual
+        predicted = self.t1_model_with_ctk(t1, k, c, ctk)
+        residual = 1. / np.sqrt(n) * np.sqrt(np.power(1 - predicted / data.T, 2).sum())
+
+        return(t1,k,c,residual,ctk)
+
+    def t1_model_with_ctk(self, t1, k, c, ctk):
+        '''
+        Compute the corrected magnetization using the T1 model 
+        when considering the crosstalk between adjacent slices. 
+        The magnetization is calculated using Bloch equation.
+        
+        '''
+        Mz = c*(1 - k * np.exp(-self.ti_vec/t1))
+        TR = self.ti_vec[-1] + 2 * (self.ti_vec[1] - self.ti_vec[0]) - self.ti_vec[0]
+        half_intleave = int(self.ti_vec.shape[0]/2)
+        Mz_corrected = Mz
+        Mz_corrected[half_intleave] = Mz[half_intleave] * (1 - 0.5*ctk) + c*(1 - np.exp(-(TR/2)/t1)) * (0.5*ctk)
+        Mz_corrected[np.arange(half_intleave+1,self.ti_vec.shape[0])] = Mz[np.arange(half_intleave+1,self.ti_vec.shape[0])] * (1 - ctk) + c * (1 - np.exp(-(TR/2)/t1)) * ctk
+        return np.abs(Mz_corrected)
+
+        # Mz = np.abs( c*(1 - k * np.exp(-self.ti_vec/t1)) )
+        # half_intleave = int(self.ti_vec.shape[0]/2)
+        # crosstalk_correction = np.ones(self.ti_vec.shape[0]).T
+        # crosstalk_correction[half_intleave] = 1 - 0.5*ctk
+        # crosstalk_correction[np.arange(half_intleave+1,self.ti_vec.shape[0])] = 1 - ctk
+        # Mz_corrected = Mz * crosstalk_correction
+        # return Mz_corrected
+        
 def resample(img, pixdim=1.5, ref_file=None):
     d = img.get_data().astype(np.float64)
     # option to align to reference volume
@@ -263,7 +325,7 @@ def unshuffle_slices(ni, mux, cal_vols=2, ti=None, tr=None, keep=None):
     else:
         zero_pad = 0
 
-    tis = np.tile(ti_acq,(mux,np.ceil(d.shape[3]/float(ntis))))
+    tis = np.tile(ti_acq,(mux,int(np.ceil(d.shape[3]/float(ntis)))))
 
     ntimepoints = d.shape[3]
     d_sort = d[...,ntimepoints-ntis:ntimepoints]
@@ -283,133 +345,96 @@ def unshuffle_slices(ni, mux, cal_vols=2, ti=None, tr=None, keep=None):
     return d_sort,ti_sort
 
 
-if __name__ == '__main__':
+def main(infile, outbase, mask=[], err_method='lm', fwhm=0.0, t1res=1, t1min=1, t1max=5000, tr=[], ti=[], delete=4, unshuffle=None, keep=[], cal=2, jobs=8, mux=3, pixdim=None, bet_frac=0.5):
+
     import nibabel as nb
     import os
     import sys
-    import argparse
     from multiprocessing import Pool
+    
+    outfiles = {f:outbase+'_'+f+'.nii.gz' for f in ['t1','a','b','res','unshuffled','ctk']}
 
-    arg_parser = argparse.ArgumentParser()
-    arg_parser.description  = ('Fit T1 using a grid-search.\n\n')
-    arg_parser.add_argument('infile', nargs='+', help='path to nifti file with multiple inversion times')
-    arg_parser.add_argument('-o', '--outbase', default='./t1fitter', help='path and base filename to output files')
-    arg_parser.add_argument('-m', '--mask', help='Mask file (nifti) to use. If not provided, a simple mask will be computed.')
-    arg_parser.add_argument('-e', '--err_method', default='nlspr', help='Error minimization method. Current options are "nlspr","mag","lm". Default is nlspr.')
-    arg_parser.add_argument('-f', '--fwhm', type=float, default=0.0, help='FWHM of the smoothing kernel (default=0.0mm = no smoothing)')
-    arg_parser.add_argument('-r', '--t1res', type=float, default=1.0, help='T1 grid-search resolution, in ms (default=1.0ms)')
-    arg_parser.add_argument('-n', '--t1min', type=float, default=1.0, help='Minimum T1 to allow (default=1.0ms)')
-    arg_parser.add_argument('-x', '--t1max', type=float, default=5000.0, help='Maximum T1 to allow (default=5000.0ms)')
-    arg_parser.add_argument('--tr', type=float, default=[], help='TR of the slice-shuffled scan (in ms).')
-    arg_parser.add_argument('-t', '--ti', type=float, default=[], nargs='+', help='List of inversion times. Must match order and size of input file''s 4th dim. e.g., -t 50.0 400 1200 2400. For slice-shuffed data, you just need to provide the first TI.')
-    arg_parser.add_argument('-d', '--delete', type=int, default=4, help='Number of TIs to exclude for fitting T1 (default=4)')
-    arg_parser.add_argument('-u', '--unshuffle', action='store_true', help='Unshuffle slices')
-    arg_parser.add_argument('-k', '--keep', type=float, default=[], nargs='+', help='indices of the inversion times to use for fitting (default=all)')
-    arg_parser.add_argument('-c', '--cal', type=int, default=2, help='Number of calibration volumes for slice-shuffed data (default=2)')
-    arg_parser.add_argument('-j', '--jobs', type=int, default=8, help='Number of processors to run for multiprocessing (default=8)')
-    arg_parser.add_argument('-s', '--mux', type=int, default=3, help='Number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
-    arg_parser.add_argument('-p', '--pixdim', type=float, default=None, help='Resample to a different voxel size (default is to retain input voxel size)')
-    arg_parser.add_argument('-b', '--bet_frac', type=float, default=0.5, help='bet fraction for FSL''s bet function (default is 0.5)')
-    args = arg_parser.parse_args()
-
-    #p,f = os.path.split(args.infile[0])
-    #basename,ext = (f[0:f.find('.')], f[f.find('.'):])
-    #outfiles = {f:os.path.join(p,basename+'_'+f+ext) for f in ['t1','a','b','res','unshuffled']}
-    outfiles = {f:args.outbase+'_'+f+'.nii.gz' for f in ['t1','a','b','res','unshuffled']}
-
-    ni = nb.load(args.infile[0])
-    if args.ti:
-        tis = args.ti
-        if len(tis) == 1 and args.tr != None and not args.unshuffle:
-            tis = args.ti + args.tr * np.arange(ni.shape[2]/args.mux - 1) / (ni.shape[2]/args.mux)
+    ni = nb.load(infile[0])
+    if np.array(ti).any():
+        tis = ti
+        if len(tis) == 1 and tr != None and not unshuffle:
+            tis = ti + tr * np.arange(ni.shape[2]/mux - 1) / (ni.shape[2]/mux)
             print 'TIs: ', tis.round(1).tolist()
-    elif not args.unshuffle:
+    elif not unshuffle:
         raise RuntimeError('TIs must be provided on the command line for non-slice-shuffle data!')
 
-    if len(args.infile) > 1:
-        data = np.zeros(ni.shape[0:3]+(len(args.infile),))
-        for i in xrange(len(args.infile)):
-            ni = nb.load(args.infile[i])
+    if len(infile) > 1:
+        data = np.zeros(ni.shape[0:3]+(len(infile),))
+        for i in xrange(len(infile)):
+            ni = nb.load(infile[i])
             data[...,i] = np.squeeze(ni.get_data())
     else:
-        if args.unshuffle:
-            data,tis = unshuffle_slices(ni, args.mux, cal_vols=args.cal, ti=args.ti, tr=args.tr, keep=args.keep)
+        if unshuffle:
+            data,tis = unshuffle_slices(ni, mux, cal_vols=cal, ti=ti, tr=tr, keep=keep)
             print 'Unshuffled slices, saved to %s. TIs: ' % outfiles['unshuffled'], tis.round(1).tolist()
             ni = nb.Nifti1Image(data, ni.get_affine())
-            if args.pixdim != None:
-                print('Resampling data to %0.1fmm^3 ...' % args.pixdim)
-                ni = resample(ni, args.pixdim)
+            if pixdim != None:
+                print('Resampling data to %0.1fmm^3 ...' % pixdim)
+                ni = resample(ni, pixdim)
                 data = ni.get_data()
             nb.save(ni, outfiles['unshuffled'])
         else:
-            if args.pixdim != None:
-                ni = resample(ni, args.pixdim)
+            if pixdim != None:
+                ni = resample(ni, pixdim)
             data = ni.get_data()
 
     #data = np.abs(data - 100)
     
-    if args.fwhm>0:
+    if fwhm>0:
         import scipy.ndimage as ndimage
-        sd = np.array(ni._header.get_zooms()[0:3])/args.fwhm/2.355
-        print('Smoothing with %0.1f mm FWHM Gaussian (sigma=[%0.2f,%0.2f,%0.2f] voxels)...' % (tuple([args.fwhm]+sd.tolist())))
+        sd = np.array(ni._header.get_zooms()[0:3])/fwhm/2.355
+        print('Smoothing with %0.1f mm FWHM Gaussian (sigma=[%0.2f,%0.2f,%0.2f] voxels)...' % (tuple([fwhm]+sd.tolist())))
         for i in xrange(data.shape[3]):
             ndimage.gaussian_filter(data[...,i], sigma=sd, output=data[...,i])
 
-    if args.mask==None:
+    if mask==None:
         print('Computing mask...')
         mn = np.nanmax(data, axis=3)
         try:
             #from dipy.segment.mask import median_otsu
             #masked_mn, mask = median_otsu(mn, 4, 4)
             from nipype.interfaces import fsl
-            fsl.BET(in_file=args.infile[0], frac=args.bet_frac, mask=True, no_output=False, out_file=args.outbase+'_brain').run()
-            mask = nb.load(args.outbase+'_brain_mask.nii.gz').get_data()>=0.5
+            fsl.BET(in_file=infile[0], frac=bet_frac, mask=True, no_output=False, out_file=outbase+'_brain').run()
+            mask = nb.load(outbase+'_brain_mask.nii.gz').get_data()>=0.5
         except:
             print('WARNING: failed to compute a mask. Fitting all voxels.')
             mask = np.ones(mn.shape, dtype=bool)
-    elif args.mask.lower()=='none':
+    elif mask.lower()=='none':
         mask = np.ones((data.shape[0],data.shape[1],data.shape[2]), dtype=bool)
     else:
-        mask_ni = nb.load(args.mask)
-        if args.pixdim != None:
-            print('Resampling mask to %0.1fmm^3 ...' % args.pixdim)
-            mask_ni = resample(mask_ni, args.pixdim)
+        mask_ni = nb.load(mask)
+        if pixdim != None:
+            print('Resampling mask to %0.1fmm^3 ...' % pixdim)
+            mask_ni = resample(mask_ni, pixdim)
         mask = mask_ni.get_data()>=0.5
 
+    #mask = np.ones_like(data[...,0])  # only when fsl.BET fails
     brain_inds = np.argwhere(mask) # for testing on some voxels: [0:10000,:]
     t1 = np.zeros(mask.shape, dtype=np.float)
     a = np.zeros(mask.shape, dtype=np.float)
     b = np.zeros(mask.shape, dtype=np.float)
     res = np.zeros(mask.shape, dtype=np.float)
+    if err_method == 'ctk':
+        ctk = np.zeros(mask.shape, dtype=np.float)
+    
     print('Fitting T1 model...')
-    fit = T1_fitter(tis, args.t1res, args.t1min, args.t1max, args.err_method, args.delete)
-
-    #update_interval = round(brain_inds.shape[0]/20.0)
-    #for i,c in enumerate(brain_inds):
-    #    d = data[c[0],c[1],c[2],:]
-    #    nans = np.isnan(d)
-    #    if np.any(nans):
-    #        nn = nans==False
-    #        fit_nan = T1_fitter(tis[nn], args.t1res, args.t1min, args.t1max)
-    #        t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit_nan.t1_fit_nlspr(d[nn])
-    #    else:
-    #        t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]],inflect = fit.t1_fit_nlspr(d)
-    #    if np.mod(i, update_interval)==0:
-    #        progress = int(20.0*i/brain_inds.shape[0]+0.5)
-    #        sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*progress, ' '*(20-progress), progress*5))
-    #        sys.stdout.flush()
-    #print(' finished.')
+    fit = T1_fitter(tis, t1res, t1min, t1max, err_method, delete)
 
     update_step = 20
     update_interval = round(brain_inds.shape[0]/float(update_step))
 
-    if args.jobs<2:
+    if jobs<2:
         for i,c in enumerate(brain_inds):
             d = data[c[0],c[1],c[2],:]
             nans = np.isnan(d)
             if np.any(nans):
                 nn = nans==False
-                fit_nan = T1_fitter(tis[nn], args.t1res, args.t1min, args.t1max, args.err_method, args.delete)
+                fit_nan = T1_fitter(tis[nn], t1res, t1min, t1max, err_method, delete)
                 t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]] = fit_nan(d[nn])
             else:
                 t1[c[0],c[1],c[2]],b[c[0],c[1],c[2]],a[c[0],c[1],c[2]],res[c[0],c[1],c[2]] = fit(d)
@@ -419,7 +444,7 @@ if __name__ == '__main__':
                 sys.stdout.flush()
         print(' finished.')
     else:
-        p = Pool(args.jobs)
+        p = Pool(jobs)
         work = [data[c[0],c[1],c[2],:] for c in brain_inds]
         workers = p.map_async(fit, work)
         num_updates = 0
@@ -436,6 +461,8 @@ if __name__ == '__main__':
             b[c[0],c[1],c[2]] = out[i][1]
             a[c[0],c[1],c[2]] = out[i][2]
             res[c[0],c[1],c[2]] = out[i][3]
+            if err_method == 'ctk':
+                ctk[c[0],c[1],c[2]] = out[i][4]
 
         print(' finished.')
 
@@ -447,4 +474,38 @@ if __name__ == '__main__':
     nb.save(ni_out, outfiles['b'])
     ni_out = nb.Nifti1Image(res, ni.get_affine())
     nb.save(ni_out, outfiles['res'])
+    if err_method == 'ctk':
+        ni_out = nb.Nifti1Image(ctk, ni.get_affine())
+        nb.save(ni_out, outfiles['ctk'])
+
+ 
+
+if __name__ == '__main__':
+   
+    import argparse
+
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.description  = ('Fit T1 using a grid-search.\n\n')
+    arg_parser.add_argument('infile', nargs='+', help='path to nifti file with multiple inversion times')
+    arg_parser.add_argument('-o', '--outbase', default='./t1fitter', help='path and base filename to output files')
+    arg_parser.add_argument('-m', '--mask', help='Mask file (nifti) to use. If not provided, a simple mask will be computed.')
+    arg_parser.add_argument('-e', '--err_method', default='lm', help='Error minimization method. Current options are "nlspr"-nonlinear least square with polarity restoration, "mag"-fitting magnitude images without noisy data points, "lm"-Levenberg-Marquardt NLS, "ctk"-a model trying to correct for slice crosstalk effects. Default is lm.')
+    arg_parser.add_argument('-f', '--fwhm', type=float, default=0.0, help='FWHM of the smoothing kernel (default=0.0mm = no smoothing)')
+    arg_parser.add_argument('-r', '--t1res', type=float, default=1.0, help='T1 grid-search resolution, in ms (default=1.0ms)')
+    arg_parser.add_argument('-n', '--t1min', type=float, default=1.0, help='Minimum T1 to allow (default=1.0ms)')
+    arg_parser.add_argument('-x', '--t1max', type=float, default=5000.0, help='Maximum T1 to allow (default=5000.0ms)')
+    arg_parser.add_argument('--tr', type=float, default=[], help='TR of the slice-shuffled scan (in ms).')
+    arg_parser.add_argument('-t', '--ti', type=float, default=[], nargs='+', help='List of inversion times. Must match order and size of input file''s 4th dim. e.g., -t 50.0 400 1200 2400. For slice-shuffed data, you just need to provide the first TI.')
+    arg_parser.add_argument('-d', '--delete', type=int, default=4, help='Number of TIs to exclude for fitting T1 (default=4)')
+    arg_parser.add_argument('-u', '--unshuffle', action='store_true', help='Unshuffle slices')
+    arg_parser.add_argument('-k', '--keep', type=float, default=[], nargs='+', help='indices of the inversion times to use for fitting (default=all)')
+    arg_parser.add_argument('-c', '--cal', type=int, default=2, help='Number of calibration volumes for slice-shuffed data (default=2)')
+    arg_parser.add_argument('-j', '--jobs', type=int, default=8, help='Number of processors to run for multiprocessing (default=8)')
+    arg_parser.add_argument('-s', '--mux', type=int, default=3, help='Number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
+    arg_parser.add_argument('-p', '--pixdim', type=float, default=None, help='Resample to a different voxel size (default is to retain input voxel size)')
+    arg_parser.add_argument('-b', '--bet_frac', type=float, default=0.5, help='bet fraction for FSL''s bet function (default is 0.5)')
+    args = arg_parser.parse_args()
+
+    main(args.infile, args.outbase, args.mask, args.err_method, args.fwhm, args.t1res, args.t1min, args.t1max, args.tr, args.ti, args.delete, args.unshuffle, args.keep, args.cal, args.jobs, args.mux, args.pixdim, args.bet_frac)
+
 
