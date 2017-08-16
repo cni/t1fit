@@ -12,6 +12,11 @@ For detailed usage information, run
     ./t1_fitter.py -h
 
 ### Correcting for EPI distortion
-EPI distortion correction is done using FSL's topup tool. Provide the NIFTI file corresponding to the reversed phase encoding acquisition, along with the NIFTI file of the original phase encoding, and run the script t1fit_unwarp.py with:
+EPI distortion correction is done using FSL's topup tool. Provide the NIFTI file of the reversed phase encoding acquisition, along with the NIFTI file of the original phase encoding acquisition, and run the script `t1fit_unwarp.py` with:
 
     ./t1fit_unwarp.py -p /path/to/reverse/pe/nifti.nii.gz /path/to/nifti.nii.gz outbase
+
+For detailed usage information, run
+
+    ./t1fit_unwarp.py -h
+
