@@ -345,7 +345,7 @@ def unshuffle_slices(ni, mux, cal_vols=2, ti=None, tr=None, keep=None):
     return d_sort,ti_sort
 
 
-def main(infile, outbase, mask=[], err_method='lm', fwhm=0.0, t1res=1, t1min=1, t1max=5000, tr=[], ti=[], delete=4, unshuffle=None, keep=[], cal=2, jobs=8, mux=3, pixdim=None, bet_frac=0.5):
+def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1, t1max=5000, tr=[], ti=[], delete=4, unshuffle=None, keep=[], cal=2, jobs=8, mux=3, pixdim=None, bet_frac=0.5):
 
     import nibabel as nb
     import os
@@ -452,8 +452,9 @@ def main(infile, outbase, mask=[], err_method='lm', fwhm=0.0, t1res=1, t1min=1, 
             i = brain_inds.shape[0] - workers._number_left * workers._chunksize
             if i >= update_interval*num_updates:
                 num_updates += 1
-                sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*num_updates, ' '*(update_step-num_updates), num_updates*5))
-                sys.stdout.flush()
+                if num_updates<=update_step:
+                    sys.stdout.write('\r[{0}{1}] {2}%'.format('#'*num_updates, ' '*(update_step-num_updates), num_updates*5))
+                    sys.stdout.flush()
 
         out = workers.get()
         for i,c in enumerate(brain_inds):
