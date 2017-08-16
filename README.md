@@ -11,3 +11,21 @@ For detailed usage information, run
 
     ./t1_fitter.py -h
 
+### Correcting for EPI distortion
+EPI distortion correction is done using [FSL's topup tool](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/topup). Provide the NIFTI file of the reversed phase encoding acquisition, along with the NIFTI file of the original phase encoding acquisition, and run the script `t1fit_unwarp.py` with:
+
+    ./t1fit_unwarp.py -p /path/to/reverse/pe/nifti.nii.gz /path/to/nifti.nii.gz outbase
+
+Other options include:
+
+    --cal       number of calibration volumes at the beginning of the nifti file (default=2)
+    --mux       number of SMS bands (mux factor) for slice-shuffled data (default=3)
+    --tr        TR of the slice-shuffled scan in ms (default=3000)
+    --ti        shortest inversion time of the slice-shuffled scan in ms (default=50)
+    --method    interpolation method for FSL's applytopup, 'jac' or 'lsr' (default is 'jac'). 
+                Refer to FSL's applytopup for further information.
+
+For detailed usage information, run
+
+    ./t1fit_unwarp.py -h
+
