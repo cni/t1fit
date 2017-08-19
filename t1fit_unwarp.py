@@ -17,7 +17,8 @@ class UnwarpEpi(object):
         self.cal_file = out_basename+'_cal.nii.gz'
         self.acq_file = out_basename+'_acqparams.txt' 
         self.index_file = out_basename+'_index.txt'
-        self.topup_out = out_basename+'_topup'
+        self.topup_out_movpar = out_basename+'_topup_movpar.txt'
+        self.topup_out_fieldcoef = out_basename+'_topup_fieldcoef.nii.gz'
         self.movpar = None
         self.fieldcoef = None
         self.b0_unwarped = None
@@ -92,8 +93,9 @@ class UnwarpEpi(object):
         applytopup.inputs.encoding_file = self.acq_file
         applytopup.inputs.in_index = index
         applytopup.inputs.method   = method
-        applytopup.inputs.in_topup = self.topup_out
-        applytopup.inputs.out_base = out_base
+        applytopup.inputs.in_topup_movpar = self.topup_out_movpar
+        applytopup.inputs.in_topup_fieldcoef = self.topup_out_fieldcoef
+        applytopup.inputs.out_corrected = out_base+'.nii.gz'
         # applytopup.cmdline
         res = applytopup.run()
 
