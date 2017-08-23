@@ -17,6 +17,7 @@ class UnwarpEpi(object):
         self.cal_file = out_basename+'_cal.nii.gz'
         self.acq_file = out_basename+'_acqparams.txt' 
         self.index_file = out_basename+'_index.txt'
+        self.topup_out = out_basename+'_topup' 
         self.topup_out_movpar = out_basename+'_topup_movpar.txt'
         self.topup_out_fieldcoef = out_basename+'_topup_fieldcoef.nii.gz'
         self.movpar = None
