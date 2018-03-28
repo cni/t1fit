@@ -109,7 +109,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('infile', help='path to nifti file with multiple inversion times')
     arg_parser.add_argument('outbase', help='basename of the output files')
     arg_parser.add_argument('-p', '--pe1', default='', help='path to nifti file with reverse phase encoding for EPI distortion correction')
-    arg_parser.add_argument('--cal', default=2, help='number of calibration volumes at the beginning of the nifti file (default=2)')
+    arg_parser.add_argument('--cal', type=int, default=2, help='number of calibration volumes at the beginning of the nifti file (default=2)')
     arg_parser.add_argument('--tr', type=float, default=3000.0, help='TR of the slice-shuffled scan (in ms, default=3000.0)')
     arg_parser.add_argument('--ti', type=float, default=50.0, help='for slice-shuffled data, provide the first TI (in ms, default=50.0)')
     arg_parser.add_argument('--mux', type=int, default=3, help='number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
