@@ -286,7 +286,7 @@ def resample(img, pixdim=1.5, ref_file=None):
     data,xform = reslice(d, resamp_xform, img.get_header().get_zooms()[:3], [pixdim]*3, order=5)
     return nb.Nifti1Image(data, xform)
 
-def unshuffle_slices(ni, mux, cal_vols=2, ti=None, tr=None, keep=None):
+def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, ntis=None, keep=None):
     if not ti:
         description = ni._header.get('descrip')
         vals = description.tostring().split(';')
@@ -303,9 +303,10 @@ def unshuffle_slices(ni, mux, cal_vols=2, ti=None, tr=None, keep=None):
     if not tr:
         tr = ni._header.get_zooms()[3] * 1000.
     
-    phase_cycle_num = 2
-    ntis = ni.shape[2] / mux
-    num_cal_trs = phase_cycle_num * mux
+    if not ntis:
+        ntis = ni.shape[2] / mux
+
+    num_cal_trs = mux_cycle_num * mux
     acq = np.mod(np.arange(ntis-1,-1,-1) - num_cal_trs, ntis)
     sl_acq = np.zeros((ntis,ntis))
     for sl in range(ntis):
@@ -345,7 +346,7 @@ def unshuffle_slices(ni, mux, cal_vols=2, ti=None, tr=None, keep=None):
     return d_sort,ti_sort
 
 
-def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1, t1max=5000, tr=[], ti=[], delete=4, unshuffle=None, keep=[], cal=2, jobs=8, mux=3, pixdim=None, bet_frac=0.5):
+def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1, t1max=5000, tr=[], ti=[], delete=4, unshuffle=None, keep=[], cal=2, mux_cycle=2, jobs=8, mux=3, pixdim=None, bet_frac=0.5):
 
     import nibabel as nb
     import os
@@ -370,7 +371,7 @@ def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1
             data[...,i] = np.squeeze(ni.get_data())
     else:
         if unshuffle:
-            data,tis = unshuffle_slices(ni, mux, cal_vols=cal, ti=ti, tr=tr, keep=keep)
+            data,tis = unshuffle_slices(ni, mux, cal_vols=cal, mux_cycle_num=mux_cycle, ti=ti, tr=tr, keep=keep)
             print 'Unshuffled slices, saved to %s. TIs: ' % outfiles['unshuffled'], tis.round(1).tolist()
             ni = nb.Nifti1Image(data, ni.get_affine())
             if pixdim != None:
@@ -501,12 +502,13 @@ if __name__ == '__main__':
     arg_parser.add_argument('-u', '--unshuffle', action='store_true', help='Unshuffle slices')
     arg_parser.add_argument('-k', '--keep', type=float, default=[], nargs='+', help='indices of the inversion times to use for fitting (default=all)')
     arg_parser.add_argument('-c', '--cal', type=int, default=2, help='Number of calibration volumes for slice-shuffed data (default=2)')
+    arg_parser.add_argument('--mux_cycle', type=int, default=2, help='Number of mux calibration cycles (default=2)')
     arg_parser.add_argument('-j', '--jobs', type=int, default=8, help='Number of processors to run for multiprocessing (default=8)')
     arg_parser.add_argument('-s', '--mux', type=int, default=3, help='Number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
     arg_parser.add_argument('-p', '--pixdim', type=float, default=None, help='Resample to a different voxel size (default is to retain input voxel size)')
     arg_parser.add_argument('-b', '--bet_frac', type=float, default=0.5, help='bet fraction for FSL''s bet function (default is 0.5)')
     args = arg_parser.parse_args()
 
-    main(args.infile, args.outbase, args.mask, args.err_method, args.fwhm, args.t1res, args.t1min, args.t1max, args.tr, args.ti, args.delete, args.unshuffle, args.keep, args.cal, args.jobs, args.mux, args.pixdim, args.bet_frac)
+    main(args.infile, args.outbase, args.mask, args.err_method, args.fwhm, args.t1res, args.t1min, args.t1max, args.tr, args.ti, args.delete, args.unshuffle, args.keep, args.cal, args.mux_cycle, args.jobs, args.mux, args.pixdim, args.bet_frac)
 
 
