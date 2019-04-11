@@ -4,7 +4,7 @@ import numpy as np
 np.seterr(all='ignore')
 
 
-import contextlib, cStringIO, sys
+import contextlib, io, sys
 
 @contextlib.contextmanager
 def nostdout():
@@ -13,13 +13,13 @@ def nostdout():
     print the output before raising the error.'''
 
     saved_stdout = sys.stdout
-    sys.stdout = cStringIO.StringIO()
+    sys.stdout = io.StringIO()
     try:
         yield
     except Exception:
         saved_output = sys.stdout
         sys.stdout = saved_stdout
-        print saved_output.getvalue()
+        print(f'{saved_output.getvalue()}')
         raise
     sys.stdout = saved_stdout
 
@@ -291,33 +291,33 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
         description = ni._header.get('descrip')
         vals = description.tostring().split(';')
         ti = [int(v[3:]) for v in vals if 'ti' in v][0]
-        print 'Using TI=%0.2f from description.' % ti
+        print(f'Using TI={ti:.2f} from description.')
     else:
         # ti might be a list, in which case we just need the first ti
         try:
             ti = ti[0]
         except:
             pass
-        print 'Using TI=%0.2f from argument list.' % ti
+        print(f'Using TI={ti:.2f} from argument list.')
 
     if not tr:
         tr = ni._header.get_zooms()[3] * 1000.
     
     if not ntis:
-        ntis = ni.shape[2] / mux
+        ntis = int(ni.shape[2] / mux)
 
     num_cal_trs = mux_cycle_num * mux
     acq = np.mod(np.arange(ntis-1,-1,-1) - num_cal_trs, ntis)
     sl_acq = np.zeros((ntis,ntis))
     for sl in range(ntis):
-        sl_acq[sl,:] = np.roll(acq, np.mod(sl,2)*int(round(ntis/2.))+sl/2+1)
+        sl_acq[sl,:] = np.roll(acq, np.mod(sl,2)*int(round(ntis/2.))+int(sl/2)+1)
 
     ti_acq = ti + sl_acq*tr/ntis
 
     d = ni.get_data()
     d = d[:,:,:,cal_vols:]
     if d.shape[3]<ntis:
-        print 'WARNING: Too few volumes! zero-padding...'
+        print(f'WARNING: Too few volumes! zero-padding...')
         sz = list(d.shape)
         zero_pad = ntis - sz[3]
         sz[3] = zero_pad
@@ -360,19 +360,19 @@ def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1
         tis = ti
         if len(tis) == 1 and tr != None and not unshuffle:
             tis = ti + tr * np.arange(ni.shape[2]/mux - 1) / (ni.shape[2]/mux)
-            print 'TIs: ', tis.round(1).tolist()
+            print(f'TIs: {tis.round(1).tolist()}')
     elif not unshuffle:
         raise RuntimeError('TIs must be provided on the command line for non-slice-shuffle data!')
 
     if len(infile) > 1:
         data = np.zeros(ni.shape[0:3]+(len(infile),))
-        for i in xrange(len(infile)):
+        for i in range(len(infile)):
             ni = nb.load(infile[i])
             data[...,i] = np.squeeze(ni.get_data())
     else:
         if unshuffle:
             data,tis = unshuffle_slices(ni, mux, cal_vols=cal, mux_cycle_num=mux_cycle, ti=ti, tr=tr, keep=keep)
-            print 'Unshuffled slices, saved to %s. TIs: ' % outfiles['unshuffled'], tis.round(1).tolist()
+            print('Unshuffled slices, saved to %s. TIs: ' %(outfiles['unshuffled'], tis.round(1).tolist()))
             ni = nb.Nifti1Image(data, ni.get_affine())
             if pixdim != None:
                 print('Resampling data to %0.1fmm^3 ...' % pixdim)
@@ -390,7 +390,7 @@ def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1
         import scipy.ndimage as ndimage
         sd = np.array(ni._header.get_zooms()[0:3])/fwhm/2.355
         print('Smoothing with %0.1f mm FWHM Gaussian (sigma=[%0.2f,%0.2f,%0.2f] voxels)...' % (tuple([fwhm]+sd.tolist())))
-        for i in xrange(data.shape[3]):
+        for i in range(data.shape[3]):
             ndimage.gaussian_filter(data[...,i], sigma=sd, output=data[...,i])
 
     if mask==None:

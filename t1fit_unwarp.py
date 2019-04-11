@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import numpy as np
 import nibabel as nb
@@ -32,17 +32,17 @@ class UnwarpEpi(object):
         ''' Get some info from the nifti headers '''
         phase_dim1 = 1 - ni1.get_header().get_dim_info()[1] # it looks like the phase_dim in nifti header is flipped between 0 and 1 (check mux_recon.py)
         phase_dim2 = 1 - ni2.get_header().get_dim_info()[1]
-        if int([s for s in ni1.get_header().__getitem__('descrip').tostring().split(';') if s.startswith('pe=')][0].split('=')[1][0])==1:
+        if int([s for s in ni1.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'pe=')][0].decode().split('=')[1][0])==1:
             pe_dir1 = 1
         else:
             pe_dir1 = -1
-        if int([s for s in ni2.get_header().__getitem__('descrip').tostring().split(';') if s.startswith('pe=')][0].split('=')[1][0])==1:
+        if int([s for s in ni2.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'pe=')][0].decode().split('=')[1][0])==1:
             pe_dir2 = 1
         else:
             pe_dir2 = -1
-        ecsp1 = float([s for s in ni1.get_header().__getitem__('descrip').tostring().split(';') if s.startswith('ec=')][0].split('=')[1])
+        ecsp1 = float([s for s in ni1.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'ec=')][0].decode().split('=')[1])
         readout_time1 = ecsp1 * ni1.shape[phase_dim1] / 1000. # its saved in ms, but we want secs
-        ecsp2 = float([s for s in ni2.get_header().__getitem__('descrip').tostring().split(';') if s.startswith('ec=')][0].split('=')[1])
+        ecsp2 = float([s for s in ni2.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'ec=')][0].decode().split('=')[1])
         readout_time2 = ecsp2 * ni2.shape[phase_dim1] / 1000.
 
         cal1 = [im for i,im in enumerate(nb.four_to_three(ni1)) if i==(self.num_vols-1)]
@@ -58,11 +58,11 @@ class UnwarpEpi(object):
 
         # Write acquisition parameters to text file acq_file 
         with open(self.acq_file, 'w') as f:
-            for i in xrange(len(cal1)):
+            for i in range(len(cal1)):
                 row = ['0','0','0',str(readout_time1),'\n']
                 row[phase_dim1] = str(pe_dir1)
                 f.write(' '.join(row))
-            for i in xrange(len(cal2)):
+            for i in range(len(cal2)):
                 row = ['0','0','0',str(readout_time2),'\n']
                 row[phase_dim2] = str(pe_dir2)
                 f.write(' '.join(row))
@@ -137,7 +137,7 @@ if __name__ == '__main__':
     # unshuffle volumes
     ni0 = nb.load(pe0_raw)
     data, tis = unshuffle_slices(ni0, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle)
-    print 'Unshuffled slices, saved to %s. TIs: ' % pe0_unshuffled, tis.round(1).tolist() 
+    print(f'Unshuffled slices, saved to {pe0_unshuffled}. TIs: {tis.round(1).tolist()}') 
     ni0 = nb.Nifti1Image(data, ni0.get_affine())
     nb.save(ni0, pe0_unshuffled+'.nii.gz')
 
@@ -148,27 +148,27 @@ if __name__ == '__main__':
             # when pe1 is provided, unshuffle pe1 data and then unwarp using both pe0 and pe1
             ni1 = nb.load(pe1_raw)
             data, tis = unshuffle_slices(ni1, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle)
-            print 'Unshuffled slices, saved to %s.' % pe1_unshuffled
+            print(f'Unshuffled slices, saved to {pe1_unshuffled}.')
             ni1 = nb.Nifti1Image(data, ni1.get_affine())
             nb.save(ni1, pe1_unshuffled+'.nii.gz')
 
-            print 'Unwarping the unshuffled images using both pe0 and pe1...'
+            print(f'Unwarping the unshuffled images using both pe0 and pe1...')
             unwarper.prep_data(pe0_raw, pe1_raw, pe0_unshuffled+'.nii.gz', pe1_unshuffled+'.nii.gz')
             unwarper.run_topup()
             unwarper.apply_topup([pe0_unshuffled+'.nii.gz', pe1_unshuffled+'.nii.gz'], out_base=unwarped, index=[1,2], method=method)
 
         if method == 'jac':
-            print 'Unwarping the unshuffled images for pe0...'
+            print(f'Unwarping the unshuffled images for pe0...')
             unwarper.prep_data(pe0_raw, pe1_raw, pe0_unshuffled+'.nii.gz')
             unwarper.run_topup()
             unwarper.apply_topup(pe0_unshuffled+'.nii.gz', out_base=unwarped, index=[1], method=method)
 
-        print 'Fitting T1 maps...'
+        print(f'Fitting T1 maps...')
         t1_fit(infile=[unwarped+'.nii.gz'], outbase=t1fit_base, ti=tis, mask=args.mask, bet_frac=args.bet_frac) 
  
     else:
         # if only pe0 images exist
-        print 'No pe1 images provided, fitting T1 without unwarping...'
+        print(f'No pe1 images provided, fitting T1 without unwarping...')
         t1_fit(infile=[pe0_unshuffled+'.nii.gz'], outbase=t1fit_base, ti=tis, mask=args.mask, bet_frac=args.bet_frac)
 
 
