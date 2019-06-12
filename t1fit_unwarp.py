@@ -143,6 +143,7 @@ if __name__ == '__main__':
     print("Unshuffled slices, saved to {}. TIs: {}".format(pe0_unshuffled, tis.round(1).tolist()))
     ni0 = nb.Nifti1Image(data, ni0.get_affine())
     nb.save(ni0, pe0_unshuffled+'.nii.gz')
+    np.savetxt(outbase+'_TIs.txt', tis.round(1), delimiter=',', fmt='%.1f')
 
     # unwarp and fit T1
     if pe1_raw:
