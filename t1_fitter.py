@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import numpy as np
 np.seterr(all='ignore')
@@ -19,7 +19,7 @@ def nostdout():
     except Exception:
         saved_output = sys.stdout
         sys.stdout = saved_stdout
-        print(f'{saved_output.getvalue()}')
+        print(saved_output.getvalue())
         raise
     sys.stdout = saved_stdout
 
@@ -291,14 +291,14 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
         description = ni._header.get('descrip')
         vals = description.tostring().split(';')
         ti = [int(v[3:]) for v in vals if 'ti' in v][0]
-        print(f'Using TI={ti:.2f} from description.')
+        print("Using TI={:.2f} from description.".format(ti))
     else:
         # ti might be a list, in which case we just need the first ti
         try:
             ti = ti[0]
         except:
             pass
-        print(f'Using TI={ti:.2f} from argument list.')
+        print("Using TI={:.2f} from argument list.".format(ti))
 
     if not tr:
         tr = ni._header.get_zooms()[3] * 1000.
@@ -317,7 +317,7 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
     d = ni.get_data()
     d = d[:,:,:,cal_vols:]
     if d.shape[3]<ntis:
-        print(f'WARNING: Too few volumes! zero-padding...')
+        print('WARNING: Too few volumes! zero-padding...')
         sz = list(d.shape)
         zero_pad = ntis - sz[3]
         sz[3] = zero_pad
@@ -360,7 +360,7 @@ def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1
         tis = ti
         if len(tis) == 1 and tr != None and not unshuffle:
             tis = ti + tr * np.arange(ni.shape[2]/mux - 1) / (ni.shape[2]/mux)
-            print(f'TIs: {tis.round(1).tolist()}')
+            print("TIs: {}".format(tis.round(1).tolist()))
     elif not unshuffle:
         raise RuntimeError('TIs must be provided on the command line for non-slice-shuffle data!')
 

@@ -1,0 +1,82 @@
+{
+	"name": "cni-ss-qt1",
+	"label": "CNI: SS qT1 Fitting",
+	"description": "T1 fitting tool for data acquired with the slice-shuffled SMS IR-EPI sequence from CNI.",
+	"version": "0.1.0",
+	"inputs": {
+		"nifti": {
+			"base": "file",
+			"description": "Input NIFTI file",
+			"type": {
+				"enum": [
+					"nifti"
+				]
+			}
+		},
+		"nifti_pe1": {
+			"base": "file",
+			"description": "Input NIFTI file with reverse phase encoding",
+			"optional": true,
+			"type": {
+				"enum": [
+					"nitfi"
+				]
+			}
+		}
+	},
+	"config": {
+		"TI": {
+			"default": 50,
+			"description": "Shortest TI of the slice-shuffled scan in ms",
+			"type": "number"
+		},
+		"TR": {
+			"default": 3000,
+			"description": "TR of the slice-shuffled scan in ms",
+			"type": "number"
+		},
+		"calibration_cycle": {
+			"default": 2,
+			"description": "Number of calibration cycles at the beginning of data acquisition",
+			"type": "number"
+		},
+		"calibration_volume": {
+			"default": 2,
+			"description": "Number of calibration volumes at the beginning of the NIFTI file",
+			"type": "number"
+		},
+		"mask_threshold": {
+			"default": 0.5,
+			"description": "Fractional intensity threshold (0-\u003e1); smaller values give larger brain outline estimates",
+			"type": "number"
+		},
+		"multiband_factor": {
+			"default": 3,
+			"description": "Multiband factor of the slice-shuffled scan",
+			"type": "number"
+		},
+		"topup_method": {
+			"default": "jac",
+			"description": "Algorithm used for applytopup. 'jac' for Jacobian, 'lsr' for least-square resampling",
+			"enum": [
+				"jac",
+				"lsr"
+			],
+			"type": "string"
+		}
+	},
+	"author": "Hua Wu",
+	"maintainer": "Hua Wu",
+	"license": "Other",
+	"source": "https://github.com/cni/t1fit",
+	"url": "",
+	"custom": {
+		"gear-builder": {
+			"category": "analysis",
+			"image": "cni-ss-qt1"
+		},
+		"flywheel": {
+			"suite": "Stanford CNI"
+		}
+	}
+}

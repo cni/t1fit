@@ -17,7 +17,7 @@ class UnwarpEpi(object):
         self.cal_file = out_basename+'_cal.nii.gz'
         self.acq_file = out_basename+'_acqparams.txt' 
         self.index_file = out_basename+'_index.txt'
-        self.topup_out = out_basename+'_topup' 
+        self.topup_out = out_basename+'_topup'
         self.topup_out_movpar = out_basename+'_topup_movpar.txt'
         self.topup_out_fieldcoef = out_basename+'_topup_fieldcoef.nii.gz'
         self.movpar = None
@@ -81,6 +81,9 @@ class UnwarpEpi(object):
         topup.inputs.in_file = self.cal_file
         topup.inputs.encoding_file = self.acq_file
         topup.inputs.out_base = self.topup_out
+        topup.inputs.out_field = self.topup_out+'_field'
+        topup.inputs.out_corrected = self.topup_out+'_corrected'
+        topup.inputs.out_logfile = self.topup_out+'.log'
         # The following doesn't seem to help. I guess topup isn't parallelized.
         #topup.inputs.environ = {'FSLPARALLEL':'condor', 'OMP_NUM_THREADS':'12'}
         res = topup.run()
@@ -137,7 +140,7 @@ if __name__ == '__main__':
     # unshuffle volumes
     ni0 = nb.load(pe0_raw)
     data, tis = unshuffle_slices(ni0, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle)
-    print(f'Unshuffled slices, saved to {pe0_unshuffled}. TIs: {tis.round(1).tolist()}') 
+    print("Unshuffled slices, saved to {}. TIs: {}".format(pe0_unshuffled, tis.round(1).tolist()))
     ni0 = nb.Nifti1Image(data, ni0.get_affine())
     nb.save(ni0, pe0_unshuffled+'.nii.gz')
 
@@ -148,27 +151,27 @@ if __name__ == '__main__':
             # when pe1 is provided, unshuffle pe1 data and then unwarp using both pe0 and pe1
             ni1 = nb.load(pe1_raw)
             data, tis = unshuffle_slices(ni1, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle)
-            print(f'Unshuffled slices, saved to {pe1_unshuffled}.')
+            print("Unshuffled slices, saved to {}.".format(pe1_unshuffled))
             ni1 = nb.Nifti1Image(data, ni1.get_affine())
             nb.save(ni1, pe1_unshuffled+'.nii.gz')
 
-            print(f'Unwarping the unshuffled images using both pe0 and pe1...')
+            print('Unwarping the unshuffled images using both pe0 and pe1...')
             unwarper.prep_data(pe0_raw, pe1_raw, pe0_unshuffled+'.nii.gz', pe1_unshuffled+'.nii.gz')
             unwarper.run_topup()
             unwarper.apply_topup([pe0_unshuffled+'.nii.gz', pe1_unshuffled+'.nii.gz'], out_base=unwarped, index=[1,2], method=method)
 
         if method == 'jac':
-            print(f'Unwarping the unshuffled images for pe0...')
+            print('Unwarping the unshuffled images for pe0...')
             unwarper.prep_data(pe0_raw, pe1_raw, pe0_unshuffled+'.nii.gz')
             unwarper.run_topup()
             unwarper.apply_topup(pe0_unshuffled+'.nii.gz', out_base=unwarped, index=[1], method=method)
 
-        print(f'Fitting T1 maps...')
+        print('Fitting T1 maps...')
         t1_fit(infile=[unwarped+'.nii.gz'], outbase=t1fit_base, ti=tis, mask=args.mask, bet_frac=args.bet_frac) 
  
     else:
         # if only pe0 images exist
-        print(f'No pe1 images provided, fitting T1 without unwarping...')
+        print('No pe1 images provided, fitting T1 without unwarping...')
         t1_fit(infile=[pe0_unshuffled+'.nii.gz'], outbase=t1fit_base, ti=tis, mask=args.mask, bet_frac=args.bet_frac)
 
 
