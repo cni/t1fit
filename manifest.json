@@ -2,7 +2,7 @@
 	"name": "cni-ss-qt1",
 	"label": "CNI: SS qT1 mapping",
 	"description": "T1 fitting tool for data acquired with the slice-shuffled SMS IR-EPI sequence from CNI.",
-	"version": "0.1.1",
+	"version": "0.1.3",
 	"inputs": {
 		"nifti": {
 			"base": "file",
@@ -76,7 +76,7 @@
 			"image": "cni-ss-qt1"
 		},
 		"flywheel": {
- 			"suite": "Stanford CNI"
+			"suite": "Stanford CNI"
 		}
 	}
 }

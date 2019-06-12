@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import numpy as np
+import math
 np.seterr(all='ignore')
 
 
@@ -310,8 +311,7 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
     acq = np.mod(np.arange(ntis-1,-1,-1) - num_cal_trs, ntis)
     sl_acq = np.zeros((ntis,ntis))
     for sl in range(ntis):
-        sl_acq[sl,:] = np.roll(acq, np.mod(sl,2)*int(round(ntis/2.))+int(sl/2)+1)
-
+        sl_acq[sl,:] = np.roll(acq, np.mod(sl,2)*math.ceil(ntis/2.)+int(sl/2)+1)
     ti_acq = ti + sl_acq*tr/ntis
 
     d = ni.get_data()
@@ -327,7 +327,6 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
         zero_pad = 0
 
     tis = np.tile(ti_acq,(mux,int(np.ceil(d.shape[3]/float(ntis)))))
-
     ntimepoints = d.shape[3]
     d_sort = d[...,ntimepoints-ntis:ntimepoints]
     tis = tis[:,ntimepoints-ntis:ntimepoints]
