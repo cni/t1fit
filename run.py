@@ -25,8 +25,8 @@ if __name__ == '__main__':
             config = json.load(f)
 
     infile = config['inputs']['nifti']['location']['path']
-    if 'nifti_pe1' in config['inputs']:
-        infile_pe1 = config['inputs']['nifti_pe1']['location']['path']
+    if 'nifti_rpe' in config['inputs']:
+        infile_pe1 = config['inputs']['nifti_rpe']['location']['path']
     else:
         infile_pe1 = ''
     TR = config['config']['TR']
