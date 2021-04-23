@@ -4,6 +4,8 @@ import numpy as np
 import math
 np.seterr(all='ignore')
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning) 
 
 import contextlib, io, sys
 
@@ -279,12 +281,12 @@ def resample(img, pixdim=1.5, ref_file=None):
     if ref_file!=None:
         # NOT WORKING! I don't think the dipy registration routine is applying the affine.
         ref = nb.load(ref_file)
-        mn = nb.Nifti1Image(d.mean(axis=3), img.get_affine())
+        mn = nb.Nifti1Image(d.mean(axis=3), img.affine)
         reg = registration.HistogramRegistration(mn, ref, interp='tri')
         T = reg.optimize('rigid')
-        resamp_xform = np.dot(img.get_affine(), T.inv().as_affine())
+        resamp_xform = np.dot(img.affine, T.inv().as_affine())
     else:
-        resamp_xform = img.get_affine()
+        resamp_xform = img.affine
     try:
         from dipy.align.aniso2iso import reslice
     except:
@@ -313,10 +315,14 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
         ntis = int(ni.shape[2] / mux)
 
     num_cal_trs = mux_cycle_num * mux
-    acq = np.mod(np.arange(ntis-1,-1,-1) - num_cal_trs, ntis)
     sl_acq = np.zeros((ntis,ntis))
+    acq = np.mod(np.arange(ntis-1,-1,-1) - num_cal_trs, ntis)
     for sl in range(ntis):
-        sl_acq[sl,:] = np.roll(acq, np.mod(sl,2)*math.ceil(ntis/2.)+int(sl/2)+1)
+       sl_acq[sl,:] = np.roll(acq, np.mod(sl,2)*math.ceil(ntis/2.)+int(sl/2)+1)
+    # inverse slice prescription order 
+    # for sl in range(ntis):
+    #    sl_acq[sl,:] = np.roll(acq, (-1) * (np.mod(sl,2)*math.ceil(ntis/2.)+int(sl/2)+1))
+    
     ti_acq = ti + sl_acq*tr/ntis
 
     d = ni.get_data()
@@ -336,9 +342,19 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
     d_sort = d[...,ntimepoints-ntis:ntimepoints]
     tis = tis[:,ntimepoints-ntis:ntimepoints]
 
-    for sl in range(ntis*mux):
-        indx = np.argsort(tis[sl,:])
-        d_sort[:,:,sl,:] = d_sort[:,:,sl,indx]
+#    for sl in range(ntis*mux):
+#        indx = np.argsort(tis[sl,:])
+#        d_sort[:,:,sl,:] = d_sort[:,:,sl,indx]
+    # By default assuming descending slice prescription. For ascending slice prescription the TI experienced by slice L is equal to the TI experienced by slice (nslice_per_band - L)
+    descending = False 
+    for sl in range(ntis):
+        for m in range(mux):
+            slidx = sl + m*ntis
+            if descending:
+                vidx = np.argsort(tis[sl,:])
+            else:
+                vidx = np.argsort(tis[ntis-1-sl,:])
+            d_sort[:,:,slidx,:] = d_sort[:,:,slidx,vidx]
 
     ti_sort = np.sort(ti_acq[:,0])
     # The last measurement is junk due to the slice-shuffling
@@ -376,8 +392,9 @@ def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1
     else:
         if unshuffle:
             data,tis = unshuffle_slices(ni, mux, cal_vols=cal, mux_cycle_num=mux_cycle, ti=ti, tr=tr, keep=keep)
-            print('Unshuffled slices, saved to %s. TIs: ' %(outfiles['unshuffled'], tis.round(1).tolist()))
-            ni = nb.Nifti1Image(data, ni.get_affine())
+            print('Unshuffled slices, saved to %s ' % outfiles['unshuffled'])
+            print('TIs: ', tis.round(1).tolist())
+            ni = nb.Nifti1Image(data, ni.affine)
             if pixdim != None:
                 print('Resampling data to %0.1fmm^3 ...' % pixdim)
                 ni = resample(ni, pixdim)
@@ -482,19 +499,19 @@ def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1
 
         print(' finished.')
 
-    ni_out = nb.Nifti1Image(t1, ni.get_affine())
+    ni_out = nb.Nifti1Image(t1, ni.affine)
     nb.save(ni_out, outfiles['t1'])
-    ni_out = nb.Nifti1Image(a, ni.get_affine())
+    ni_out = nb.Nifti1Image(a, ni.affine)
     nb.save(ni_out, outfiles['a'])
-    ni_out = nb.Nifti1Image(b, ni.get_affine())
+    ni_out = nb.Nifti1Image(b, ni.affine)
     nb.save(ni_out, outfiles['b'])
-    ni_out = nb.Nifti1Image(res, ni.get_affine())
+    ni_out = nb.Nifti1Image(res, ni.affine)
     nb.save(ni_out, outfiles['res'])
     if err_method == 'lm':
-        ni_out = nb.Nifti1Image(r2, ni.get_affine())
+        ni_out = nb.Nifti1Image(r2, ni.affine)
         nb.save(ni_out, outfiles['r2'])
     if err_method == 'ctk':
-        ni_out = nb.Nifti1Image(ctk, ni.get_affine())
+        ni_out = nb.Nifti1Image(ctk, ni.affine)
         nb.save(ni_out, outfiles['ctk'])
 
  
