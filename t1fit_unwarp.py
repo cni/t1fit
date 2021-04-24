@@ -119,6 +119,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('--ti', type=float, default=50.0, help='for slice-shuffled data, provide the first TI (in ms, default=50.0)')
     arg_parser.add_argument('--mux', type=int, default=3, help='number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
     arg_parser.add_argument('--mux_cycle', type=int, default=2, help='Number of mux calibration cycles (default=2)')
+    arg_parser.add_argument('--descending_slices', action='store_true', help='Flag for descending or ascending slices (true=descending, false=ascending')
     arg_parser.add_argument('--method', type=str, default='jac', help='method for applytopup interpolation. ''jac'' for Jacobian when only one full SS scan (pe0) is done, or ''lsr'' for least-square resampling when both pe0 and pe1 SS scans are done (default is ''jac'')')
 
     args = arg_parser.parse_args()
@@ -139,7 +140,7 @@ if __name__ == '__main__':
 
     # unshuffle volumes
     ni0 = nb.load(pe0_raw)
-    data, tis = unshuffle_slices(ni0, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle)
+    data, tis = unshuffle_slices(ni0, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle, descending=args.descending_slices)
     print("Unshuffled slices, saved to {}. TIs: {}".format(pe0_unshuffled, tis.round(1).tolist()))
     ni0 = nb.Nifti1Image(data, ni0.get_affine())
     nb.save(ni0, pe0_unshuffled+'.nii.gz')
@@ -151,7 +152,7 @@ if __name__ == '__main__':
         if method == 'lsr':
             # when pe1 is provided, unshuffle pe1 data and then unwarp using both pe0 and pe1
             ni1 = nb.load(pe1_raw)
-            data, tis = unshuffle_slices(ni1, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle)
+            data, tis = unshuffle_slices(ni1, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle, descending=args.descending_slices)
             print("Unshuffled slices, saved to {}.".format(pe1_unshuffled))
             ni1 = nb.Nifti1Image(data, ni1.get_affine())
             nb.save(ni1, pe1_unshuffled+'.nii.gz')

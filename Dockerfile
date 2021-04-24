@@ -9,7 +9,7 @@ RUN echo deb http://neurodeb.pirsquared.org trusty main contrib non-free >> /etc
 RUN apt-get update && apt-get -y install \
     python3-dev python3-pip \
     fsl-5.0-core
-RUN pip3 install --upgrade pip
+RUN pip3 install --upgrade pip==20.3.4
 RUN pip3 install numpy==1.15.4 \
     && pip3 install nibabel==2.3.2
 Run pip3 install nipype==1.1.7

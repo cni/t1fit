@@ -34,6 +34,7 @@ if __name__ == '__main__':
     mux = config['config']['multiband_factor']
     mux_cycle = config['config']['calibration_cycle']
     cal_volume = config['config']['calibration_volume']
+    descending_slices = config['config']['descending_slices']
     mask_threshold = config['config']['mask_threshold']    
     topup_method = config['config']['topup_method']
 
@@ -42,9 +43,15 @@ if __name__ == '__main__':
     outdir = '/flywheel/v0/output'
     outpath = os.path.join(outdir, basename)
     if infile_pe1 == '':
-        cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --method {};".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, topup_method)
+        if descending_slices:
+            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --method {} --descending_slices;".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, topup_method)
+        else:
+            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --method {};".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, topup_method)
     else:
-        cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -p {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --method {}".format(cmd, infile, outpath, infile_pe1, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, topup_method)
+        if descending_slices:
+            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -p {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --method {} --descending_slices".format(cmd, infile, outpath, infile_pe1, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, topup_method)
+        else:
+            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -p {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --method {}".format(cmd, infile, outpath, infile_pe1, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, topup_method)
 
     #print('{}'.format(cmd))
     bash_command(cmd)
