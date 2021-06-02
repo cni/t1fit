@@ -32,23 +32,37 @@ class UnwarpEpi(object):
         ''' Get some info from the nifti headers '''
         phase_dim1 = 1 - ni1.get_header().get_dim_info()[1] # it looks like the phase_dim in nifti header is flipped between 0 and 1 (check mux_recon.py)
         phase_dim2 = 1 - ni2.get_header().get_dim_info()[1]
-        if int([s for s in ni1.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'pe=')][0].decode().split('=')[1][0])==1:
-            pe_dir1 = 1
-        else:
-            pe_dir1 = -1
-        if int([s for s in ni2.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'pe=')][0].decode().split('=')[1][0])==1:
-            pe_dir2 = 1
-        else:
-            pe_dir2 = -1
+        pe_dir1 = 1
+        pe_dir2 = -1
+        #if int([s for s in ni1.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'pe=')][0].decode().split('=')[1][0])==1:
+        #    pe_dir1 = 1
+        #else:
+        #    pe_dir1 = -1
+        #if int([s for s in ni2.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'pe=')][0].decode().split('=')[1][0])==1:
+        #    pe_dir2 = 1
+        #else:
+        #    pe_dir2 = -1
         ecsp1 = float([s for s in ni1.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'ec=')][0].decode().split('=')[1])
         readout_time1 = ecsp1 * ni1.shape[phase_dim1] / 1000. # its saved in ms, but we want secs
         ecsp2 = float([s for s in ni2.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'ec=')][0].decode().split('=')[1])
         readout_time2 = ecsp2 * ni2.shape[phase_dim1] / 1000.
 
-        cal1 = [im for i,im in enumerate(nb.four_to_three(ni1)) if i==(self.num_vols-1)]
-        cal2 = [im for i,im in enumerate(nb.four_to_three(ni2)) if i==(self.num_vols-1)]
+        if self.num_vols > 0:     # mux sequence with internal calibrations
+        #    cal1 = [im for i,im in enumerate(nb.four_to_three(ni1)) if i==(self.num_vols-1)]
+        #    cal2 = [im for i,im in enumerate(nb.four_to_three(ni2)) if i==(self.num_vols-1)]
+            fsl.ExtractROI(in_file=nifti1, roi_file="cal1.nii.gz", t_min=self.num_vols-1, t_size=1).run()
+            fsl.ExtractROI(in_file=nifti2, roi_file="cal2.nii.gz", t_min=self.num_vols-1, t_size=1).run()
+        else:                     # hyperband without internal calibrations
+            try:
+                fsl.ExtractROI(in_file=pe0, roi_file="cal1.nii.gz", t_min=0, t_size=1).run()
+                fsl.ExtractROI(in_file=pe1, roi_file="cal2.nii.gz", t_min=0, t_size=1).run()
+            except:
+                print("Cannot open unshuffled pe0, pe1 niftis")
 
-        cal = nb.concat_images(cal1+cal2)
+        #cal = nb.concat_images(cal1+cal2)
+        fsl.Merge(in_files=["cal1.nii.gz", "cal2.nii.gz"], merged_file="cal.nii.gz", dimension='t').run()
+        cal = nb.load("cal.nii.gz")
+
         # Topup requires an even number of slices
         if cal.shape[2]%2:
             d = cal.get_data()
@@ -58,11 +72,11 @@ class UnwarpEpi(object):
 
         # Write acquisition parameters to text file acq_file 
         with open(self.acq_file, 'w') as f:
-            for i in range(len(cal1)):
+            for i in range(1):
                 row = ['0','0','0',str(readout_time1),'\n']
                 row[phase_dim1] = str(pe_dir1)
                 f.write(' '.join(row))
-            for i in range(len(cal2)):
+            for i in range(1):
                 row = ['0','0','0',str(readout_time2),'\n']
                 row[phase_dim2] = str(pe_dir2)
                 f.write(' '.join(row))
@@ -123,6 +137,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('--method', type=str, default='jac', help='method for applytopup interpolation. ''jac'' for Jacobian when only one full SS scan (pe0) is done, or ''lsr'' for least-square resampling when both pe0 and pe1 SS scans are done (default is ''jac'')')
 
     args = arg_parser.parse_args()
+    print(args.descending_slices)
 
     pe0_raw = args.infile
     pe1_raw = args.pe1
@@ -148,24 +163,22 @@ if __name__ == '__main__':
 
     # unwarp and fit T1
     if pe1_raw:
-        unwarper = UnwarpEpi(outbase, cal_vols)
-        if method == 'lsr':
-            # when pe1 is provided, unshuffle pe1 data and then unwarp using both pe0 and pe1
-            ni1 = nb.load(pe1_raw)
-            data, tis = unshuffle_slices(ni1, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle, descending=args.descending_slices)
-            print("Unshuffled slices, saved to {}.".format(pe1_unshuffled))
-            ni1 = nb.Nifti1Image(data, ni1.get_affine())
-            nb.save(ni1, pe1_unshuffled+'.nii.gz')
+        # when pe1 is provided, unshuffle pe1 data and then unwarp using both pe0 and pe1
+        ni1 = nb.load(pe1_raw)
+        data, tis = unshuffle_slices(ni1, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle, descending=args.descending_slices)
+        print("Unshuffled slices, saved to {}.".format(pe1_unshuffled))
+        ni1 = nb.Nifti1Image(data, ni1.get_affine())
+        nb.save(ni1, pe1_unshuffled+'.nii.gz')
 
-            print('Unwarping the unshuffled images using both pe0 and pe1...')
-            unwarper.prep_data(pe0_raw, pe1_raw, pe0_unshuffled+'.nii.gz', pe1_unshuffled+'.nii.gz')
-            unwarper.run_topup()
+        unwarper = UnwarpEpi(outbase, cal_vols)
+        unwarper.prep_data(pe0_raw, pe1_raw, pe0_unshuffled+'.nii.gz', pe1_unshuffled+'.nii.gz')
+        unwarper.run_topup()
+        if method == 'lsr':
+            print('Unwarping the unshuffled images using applytopup lsr restoration method...')
             unwarper.apply_topup([pe0_unshuffled+'.nii.gz', pe1_unshuffled+'.nii.gz'], out_base=unwarped, index=[1,2], method=method)
 
         if method == 'jac':
-            print('Unwarping the unshuffled images for pe0...')
-            unwarper.prep_data(pe0_raw, pe1_raw, pe0_unshuffled+'.nii.gz')
-            unwarper.run_topup()
+            print('Unwarping the unshuffled images using applytopup Jacobian modulation method...')
             unwarper.apply_topup(pe0_unshuffled+'.nii.gz', out_base=unwarped, index=[1], method=method)
 
         print('Fitting T1 maps...')

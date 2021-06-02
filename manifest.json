@@ -1,8 +1,8 @@
 {
 	"name": "cni-ss-qt1",
-	"label": "CNI SS qT1 map",
+	"label": "Slice-shuffled qT1 map",
 	"description": "T1 fitting tool for data acquired with the slice-shuffled SMS IR-EPI sequence from CNI.",
-	"version": "0.2.1",
+	"version": "0.2.4",
 	"inputs": {
 		"nifti": {
 			"base": "file",
@@ -80,7 +80,7 @@
 			"category": "analysis",
 			"image": "cni-ss-qt1"
 		},
-                "Flywheel": {
+                "flywheel": {
                         "suite": "Stanford CNI"
                 }
 	}
