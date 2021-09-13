@@ -1,8 +1,8 @@
 {
 	"name": "cni-ss-qt1",
-	"label": "Slice-shuffled qT1 map",
+	"label": "CNI Slice-shuffled qT1 map",
 	"description": "T1 fitting tool for data acquired with the slice-shuffled SMS IR-EPI sequence from CNI.",
-	"version": "0.2.4",
+	"version": "0.3.0",
 	"inputs": {
 		"nifti": {
 			"base": "file",
@@ -27,28 +27,33 @@
 	"config": {
 		"TI": {
 			"default": 50,
-			"description": "Shortest TI of the slice-shuffled scan in ms",
+			"description": "Shortest TI of the slice-shuffled scan in ms. Use the config value unless cannot be derived from the nifti metadata",
 			"type": "number"
 		},
 		"TR": {
 			"default": 3000,
-			"description": "TR of the slice-shuffled scan in ms",
+			"description": "TR of the slice-shuffled scan in ms. Use the config value unless cannot be derived from the nifti metadata",
 			"type": "number"
 		},
 		"calibration_cycle": {
 			"default": 2,
-			"description": "Number of calibration cycles at the beginning of data acquisition",
+			"description": "Number of calibration cycles at the beginning of data acquisition. Use the config value unless cannot be derived from the nifti metadata",
 			"type": "number"
 		},
 		"calibration_volume": {
 			"default": 2,
-			"description": "Number of calibration volumes at the beginning of the NIFTI file",
+			"description": "Number of calibration volumes at the beginning of the NIFTI file. Use the config value unless cannot be derived from the nifti metadata",
 			"type": "number"
 		},
 		"descending_slices": {
 			"default": true,
-			"description": "Descending or ascending slice acquisition",
+			"description": "Descending or ascending slice acquisition. Use the config value unless cannot be derived from the nifti metadata",
 			"type": "boolean"
+		},
+		"esp": {
+			"default": 0,
+			"description": "Effective echo spacing in ms. Use the config value unless cannot be derived from the nifti metadata",
+			"type": "number"
 		},
 		"mask_threshold": {
 			"default": 0.5,

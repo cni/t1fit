@@ -25,7 +25,7 @@ class UnwarpEpi(object):
         self.b0_unwarped = None
         self.num_vols = num_vols
 
-    def prep_data(self, nifti1, nifti2, pe0=None, pe1=None):
+    def prep_data(self, nifti1, nifti2, pe0=None, pe1=None, esp=0):
         ''' Load the reconstructed image files and generate the files that TOPUP needs. '''
         ni1 = nb.load(nifti1)
         ni2 = nb.load(nifti2)
@@ -42,9 +42,13 @@ class UnwarpEpi(object):
         #    pe_dir2 = 1
         #else:
         #    pe_dir2 = -1
-        ecsp1 = float([s for s in ni1.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'ec=')][0].decode().split('=')[1])
+        if np.floor(esp*1000) == 0: 
+            ecsp1 = float([s for s in ni1.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'ec=')][0].decode().split('=')[1])
+            ecsp2 = float([s for s in ni2.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'ec=')][0].decode().split('=')[1])
+        else:
+            ecsp1 = esp
+            ecsp2 = esp 
         readout_time1 = ecsp1 * ni1.shape[phase_dim1] / 1000. # its saved in ms, but we want secs
-        ecsp2 = float([s for s in ni2.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'ec=')][0].decode().split('=')[1])
         readout_time2 = ecsp2 * ni2.shape[phase_dim1] / 1000.
 
         if self.num_vols > 0:     # mux sequence with internal calibrations
@@ -133,6 +137,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('--ti', type=float, default=50.0, help='for slice-shuffled data, provide the first TI (in ms, default=50.0)')
     arg_parser.add_argument('--mux', type=int, default=3, help='number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
     arg_parser.add_argument('--mux_cycle', type=int, default=2, help='Number of mux calibration cycles (default=2)')
+    arg_parser.add_argument('--esp', type=float, default=0.0, help='effective echo spacing (in ms)')
     arg_parser.add_argument('--descending_slices', action='store_true', help='Flag for descending or ascending slices (true=descending, false=ascending')
     arg_parser.add_argument('--method', type=str, default='jac', help='method for applytopup interpolation. ''jac'' for Jacobian when only one full SS scan (pe0) is done, or ''lsr'' for least-square resampling when both pe0 and pe1 SS scans are done (default is ''jac'')')
 
@@ -146,6 +151,7 @@ if __name__ == '__main__':
     ti = args.ti
     tr = args.tr
     mux = args.mux
+    esp = args.esp
     method = args.method
 
     pe0_unshuffled = outbase+'_pe0_unshuffled' 
@@ -171,7 +177,7 @@ if __name__ == '__main__':
         nb.save(ni1, pe1_unshuffled+'.nii.gz')
 
         unwarper = UnwarpEpi(outbase, cal_vols)
-        unwarper.prep_data(pe0_raw, pe1_raw, pe0_unshuffled+'.nii.gz', pe1_unshuffled+'.nii.gz')
+        unwarper.prep_data(pe0_raw, pe1_raw, pe0_unshuffled+'.nii.gz', pe1_unshuffled+'.nii.gz', esp=esp)
         unwarper.run_topup()
         if method == 'lsr':
             print('Unwarping the unshuffled images using applytopup lsr restoration method...')
