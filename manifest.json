@@ -2,11 +2,11 @@
 	"name": "cni-ss-qt1",
 	"label": "CNI Slice-Shuffled qT1 Mapping",
 	"description": "T1 fitting tool for data acquired with the slice-shuffled SMS IR-EPI sequence from CNI.",
-	"version": "0.3.1_beta",
+	"version": "0.4.4_beta",
 	"inputs": {
 		"nifti": {
 			"base": "file",
-			"description": "Input NIFTI file",
+			"description": "NIFTI file from the qT1 scan",
 			"type": {
 				"enum": [
 					"nifti"
@@ -15,11 +15,21 @@
 		},
 		"nifti_rpe": {
 			"base": "file",
-			"description": "Input NIFTI file with reverse phase encoding",
+			"description": "NIFTI file from the reverse phase encoding qT1 scan",
 			"optional": true,
 			"type": {
 				"enum": [
 					"nitfi"
+				]
+			}
+		},
+		"nifti_B0map": {
+			"base": "file",
+			"description": "NIFTI file from the B0 map scan (2D Fast GRE)",
+			"optional": true,
+			"type": {
+				"enum": [
+					"nifti"
 				]
 			}
 		}
@@ -45,6 +55,22 @@
 			"description": "Number of calibration volumes at the beginning of the NIFTI file. Use the config value unless cannot be derived from the nifti metadata",
 			"type": "number"
 		},
+		"use_B0map": {
+			"default": false,
+			"description": "Use B0 map for EPI distortion correction (instead of using the reverse phase encoding nifti)",
+			"type": "boolean"
+		},
+		"unwarp_direction": {
+			"default": "y-",
+			"description": "Direction of the EPI distortion correction. The definition is as follows: phase encoding (PE) direction = A/P, PE polarity = 0 (pe0), then unwarp_direction = y; PE direction = A/P, PE polarity = 1 (pe1), then unwarp_direction = y- (default); PE direction = R/L, PE polarity = 0, then unwarp_direction = x; PE direction = R/L, PE polarity = 1, then unwarp_direction = x-",
+			"enum": [
+                                "x",
+                                "x-",
+				"y",
+				"y-"
+			],
+			"type": "string"
+		},
 		"descending_slices": {
 			"default": true,
 			"description": "Descending or ascending slice acquisition. Use the config value unless cannot be derived from the nifti metadata",
@@ -52,7 +78,7 @@
 		},
 		"esp": {
 			"default": 0,
-			"description": "Effective echo spacing in ms. Use the config value unless cannot be derived from the nifti metadata",
+			"description": "Effective echo spacing in seconds. Use the config value unless cannot be derived from the nifti metadata",
 			"type": "number"
 		},
 		"mask_threshold": {

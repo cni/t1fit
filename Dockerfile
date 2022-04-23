@@ -23,7 +23,8 @@ COPY manifest.json ${FLYWHEEL}/manifest.json
 # Put script into flywheel folder
 WORKDIR ${FLYWHEEL}
 COPY t1fit_unwarp.py t1_fitter.py ./
-RUN chmod +x run t1fit_unwarp.py t1_fitter.py 
+COPY fsl-fmap-correction.sh ./fsl-fmap-correction
+RUN chmod +x run t1fit_unwarp.py t1_fitter.py fsl-fmap-correction
 
 # Set the entrypoint
 ENTRYPOINT ["/flywheel/v0/run"]

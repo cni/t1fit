@@ -42,14 +42,14 @@ class UnwarpEpi(object):
         #    pe_dir2 = 1
         #else:
         #    pe_dir2 = -1
-        if np.floor(esp*1000) == 0: 
+        if esp == 0: 
             ecsp1 = float([s for s in ni1.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'ec=')][0].decode().split('=')[1])
             ecsp2 = float([s for s in ni2.get_header().__getitem__('descrip').tostring().split(b';') if s.startswith(b'ec=')][0].decode().split('=')[1])
         else:
             ecsp1 = esp
             ecsp2 = esp 
-        readout_time1 = ecsp1 * ni1.shape[phase_dim1] / 1000. # its saved in ms, but we want secs
-        readout_time2 = ecsp2 * ni2.shape[phase_dim1] / 1000.
+        readout_time1 = ecsp1 * ni1.shape[phase_dim1] # in secs
+        readout_time2 = ecsp2 * ni2.shape[phase_dim1]
 
         if self.num_vols > 0:     # mux sequence with internal calibrations
         #    cal1 = [im for i,im in enumerate(nb.four_to_three(ni1)) if i==(self.num_vols-1)]
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     arg_parser.description  = ('Fit mono-exponential T1 relaxation model, and run EPI correction when calibration image is provided.\n\n')
     arg_parser.add_argument('infile', help='path to nifti file with multiple inversion times')
     arg_parser.add_argument('outbase', help='basename of the output files')
-    arg_parser.add_argument('-p', '--pe1', default='', help='path to nifti file with reverse phase encoding for EPI distortion correction')
+    arg_parser.add_argument('-p', '--pe1', default='', help='path to nifti file with reverse phase encoding for EPI distortion correction using FSL TOPUP')
     arg_parser.add_argument('-m', '--mask', help='mask file (nifti) to use. If not provided, a simple mask will be computed.')
     arg_parser.add_argument('-b', '--bet_frac', type=float, default=0.5, help='bet fraction for FSL''s bet function (default is 0.5)')
     arg_parser.add_argument('--cal', type=int, default=2, help='number of calibration volumes at the beginning of the nifti file (default=2)')
@@ -137,7 +137,10 @@ if __name__ == '__main__':
     arg_parser.add_argument('--ti', type=float, default=50.0, help='for slice-shuffled data, provide the first TI (in ms, default=50.0)')
     arg_parser.add_argument('--mux', type=int, default=3, help='number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
     arg_parser.add_argument('--mux_cycle', type=int, default=2, help='Number of mux calibration cycles (default=2)')
-    arg_parser.add_argument('--esp', type=float, default=0.0, help='effective echo spacing (in ms)')
+    arg_parser.add_argument('--esp', type=float, default=0.0, help='effective echo spacing (in seconds)')
+    arg_parser.add_argument('--b0map_flag', action='store_true', help='flag for using B0map for distortion correction (default=false)')
+    arg_parser.add_argument('--b0map', default='', help='path to nifti file of the B0 fieldmap for EPI distortion correction using FSL FUGUE. Two volumes are expected, the first volume being the magnitude image, the second being the off-resonance frequency image (in Hz).')
+    arg_parser.add_argument('--unwarpdir', type=str, default='y', help='direction of B0 map unwarping. For A/P phase encoding, pe0: y (default), pe1: y-')
     arg_parser.add_argument('--descending_slices', action='store_true', help='Flag for descending or ascending slices (true=descending, false=ascending')
     arg_parser.add_argument('--method', type=str, default='jac', help='method for applytopup interpolation. ''jac'' for Jacobian when only one full SS scan (pe0) is done, or ''lsr'' for least-square resampling when both pe0 and pe1 SS scans are done (default is ''jac'')')
 
@@ -151,8 +154,11 @@ if __name__ == '__main__':
     ti = args.ti
     tr = args.tr
     mux = args.mux
+    mux_cycle = args.mux_cycle
     esp = args.esp
     method = args.method
+    b0map = args.b0map
+    unwarpdir = args.unwarpdir
 
     pe0_unshuffled = outbase+'_pe0_unshuffled' 
     pe1_unshuffled = outbase+'_pe1_unshuffled' 
@@ -161,14 +167,28 @@ if __name__ == '__main__':
 
     # unshuffle volumes
     ni0 = nb.load(pe0_raw)
-    data, tis = unshuffle_slices(ni0, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle, descending=args.descending_slices)
+    data, tis = unshuffle_slices(ni0, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=mux_cycle, descending=args.descending_slices)
     print("Unshuffled slices, saved to {}. TIs: {}".format(pe0_unshuffled, tis.round(1).tolist()))
     ni0 = nb.Nifti1Image(data, ni0.get_affine())
     nb.save(ni0, pe0_unshuffled+'.nii.gz')
     np.savetxt(outbase+'_TIs.txt', tis.round(1), delimiter=',', fmt='%.1f')
 
     # unwarp and fit T1
-    if pe1_raw:
+    if args.b0map_flag:  # if using B0map
+        # generate separate volumes for magnitude and frequency images
+        b0map_magnitude = outbase+'_b0map_magnitude'
+        b0map_frequency = outbase+'_b0map_frequency'
+        command = 'fslroi '+b0map+' '+b0map_magnitude+' 1 1; fslroi '+b0map+' '+b0map_frequency+' 0 1'
+        os.system(command)
+        # fieldmap correction
+        print('Unwarping the unshuffled image using the B0map...')
+        command = './fsl-fmap-correction '+pe0_unshuffled+'.nii.gz '+b0map_magnitude+'.nii.gz '+b0map_frequency+'.nii.gz '+str(esp)+' '+unwarpdir+' '+outbase
+        print("command = {}".format(command))
+        os.system(command)
+        # fit T1
+        print('Fitting T1...')
+        t1_fit(infile=[unwarped+'.nii.gz'], outbase=t1fit_base, ti=tis, mask=args.mask, bet_frac=args.bet_frac)
+    elif pe1_raw:
         # when pe1 is provided, unshuffle pe1 data and then unwarp using both pe0 and pe1
         ni1 = nb.load(pe1_raw)
         data, tis = unshuffle_slices(ni1, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle, descending=args.descending_slices)
