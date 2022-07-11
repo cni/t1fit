@@ -2,7 +2,7 @@
 	"name": "cni-ss-qt1",
 	"label": "CNI Slice-Shuffled qT1 Mapping",
 	"description": "T1 fitting tool for data acquired with the slice-shuffled SMS IR-EPI sequence from CNI.",
-	"version": "0.4.4_beta",
+	"version": "0.4.13",
 	"inputs": {
 		"nifti": {
 			"base": "file",
@@ -23,9 +23,19 @@
 				]
 			}
 		},
-		"nifti_B0map": {
+		"nifti_B0map_magnitude": {
 			"base": "file",
-			"description": "NIFTI file from the B0 map scan (2D Fast GRE)",
+			"description": "NIFTI file of the magnitude image from the B0 map scan (2D Fast GRE)",
+			"optional": true,
+			"type": {
+				"enum": [
+					"nifti"
+				]
+			}
+		},
+		"nifti_B0map_frequency": {
+			"base": "file",
+			"description": "NIFTI file of the frequency image from the B0 map scan (2D Fast GRE)",
 			"optional": true,
 			"type": {
 				"enum": [

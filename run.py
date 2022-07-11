@@ -25,14 +25,20 @@ if __name__ == '__main__':
             config = json.load(f)
 
     infile = config['inputs']['nifti']['location']['path']
+    mask_threshold = config['config']['mask_threshold']    
+    topup_method = config['config']['topup_method']
+    b0map_flag = config['config']['use_B0map']
+    unwarp_direction = config['config']['unwarp_direction']
+
     if 'nifti_rpe' in config['inputs']:
         infile_pe1 = config['inputs']['nifti_rpe']['location']['path']
     else:
         infile_pe1 = ''
-    if 'nifti_B0map' in config['inputs']:
-        infile_b0map = config['inputs']['nifti_B0map']['location']['path']
-    else:
-        infile_b0map = ''
+    if 'b0map_flag':
+        infile_b0map_magnitude = config['inputs']['nifti_B0map_magnitude']['location']['path']
+        infile_b0map_frequency = config['inputs']['nifti_B0map_frequency']['location']['path']
+        if infile_b0map_magnitude == '' or infile_b0map_frequency == '':
+            raise AssertionError('B0map flag is selected but the magnitude or frequency nifti file is missing!')
 
     metadata = config['inputs']['nifti']['object']['info']
     try:
@@ -70,20 +76,15 @@ if __name__ == '__main__':
         cal_volume = config['config']['calibration_volume']
         descending_slices = config['config']['descending_slices']
     
-    mask_threshold = config['config']['mask_threshold']    
-    topup_method = config['config']['topup_method']
-    b0map_flag = config['config']['use_B0map']
-    unwarp_direction = config['config']['unwarp_direction']
-
     basename = (os.path.basename(infile)).split('.')[0]
     # Set output name
     outdir = '/flywheel/v0/output'
     outpath = os.path.join(outdir, basename)
     if b0map_flag:  # use B0 map
         if descending_slices:
-            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map {} --unwarpdir {} --descending_slices;".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map, unwarp_direction)
+            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map_magnitude {} --b0map_frequency {} --unwarpdir {} --descending_slices;".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map_magnitude, infile_b0map_frequency, unwarp_direction)
         else:
-            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map {} --unwarpdir {};".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map, unwarp_direction)
+            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map_magnitude {} --b0map_frequency {} --unwarpdir {};".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map_magnitude, infile_b0map_frequency, unwarp_direction)
     elif infile_pe1 == '': # no fieldmap correction
         if descending_slices:
             cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --method {} --descending_slices;".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, topup_method)

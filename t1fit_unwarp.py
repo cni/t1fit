@@ -139,7 +139,8 @@ if __name__ == '__main__':
     arg_parser.add_argument('--mux_cycle', type=int, default=2, help='Number of mux calibration cycles (default=2)')
     arg_parser.add_argument('--esp', type=float, default=0.0, help='effective echo spacing (in seconds)')
     arg_parser.add_argument('--b0map_flag', action='store_true', help='flag for using B0map for distortion correction (default=false)')
-    arg_parser.add_argument('--b0map', default='', help='path to nifti file of the B0 fieldmap for EPI distortion correction using FSL FUGUE. Two volumes are expected, the first volume being the magnitude image, the second being the off-resonance frequency image (in Hz).')
+    arg_parser.add_argument('--b0map_magnitude', default='', help='path to nifti file of the B0 fieldmap magnitude image for EPI distortion correction using FSL FUGUE.')
+    arg_parser.add_argument('--b0map_frequency', default='', help='path to nifti file of the B0 fieldmap frequency image (unit is Hz) for EPI distortion correction using FSL FUGUE.')
     arg_parser.add_argument('--unwarpdir', type=str, default='y', help='direction of B0 map unwarping. For A/P phase encoding, pe0: y (default), pe1: y-')
     arg_parser.add_argument('--descending_slices', action='store_true', help='Flag for descending or ascending slices (true=descending, false=ascending')
     arg_parser.add_argument('--method', type=str, default='jac', help='method for applytopup interpolation. ''jac'' for Jacobian when only one full SS scan (pe0) is done, or ''lsr'' for least-square resampling when both pe0 and pe1 SS scans are done (default is ''jac'')')
@@ -157,7 +158,8 @@ if __name__ == '__main__':
     mux_cycle = args.mux_cycle
     esp = args.esp
     method = args.method
-    b0map = args.b0map
+    b0map_magnitude = args.b0map_magnitude
+    b0map_frequency = args.b0map_frequency
     unwarpdir = args.unwarpdir
 
     pe0_unshuffled = outbase+'_pe0_unshuffled' 
@@ -176,13 +178,13 @@ if __name__ == '__main__':
     # unwarp and fit T1
     if args.b0map_flag:  # if using B0map
         # generate separate volumes for magnitude and frequency images
-        b0map_magnitude = outbase+'_b0map_magnitude'
-        b0map_frequency = outbase+'_b0map_frequency'
-        command = 'fslroi '+b0map+' '+b0map_magnitude+' 1 1; fslroi '+b0map+' '+b0map_frequency+' 0 1'
-        os.system(command)
+        #b0map_magnitude = outbase+'_b0map_magnitude'
+        #b0map_frequency = outbase+'_b0map_frequency'
+        #command = 'fslroi '+b0map+' '+b0map_magnitude+' 1 1; fslroi '+b0map+' '+b0map_frequency+' 0 1'
+        #os.system(command)
         # fieldmap correction
         print('Unwarping the unshuffled image using the B0map...')
-        command = './fsl-fmap-correction '+pe0_unshuffled+'.nii.gz '+b0map_magnitude+'.nii.gz '+b0map_frequency+'.nii.gz '+str(esp)+' '+unwarpdir+' '+outbase
+        command = './fsl-fmap-correction '+pe0_unshuffled+'.nii.gz '+b0map_magnitude+' '+b0map_frequency+' '+str(esp)+' '+unwarpdir+' '+outbase
         print("command = {}".format(command))
         os.system(command)
         # fit T1
