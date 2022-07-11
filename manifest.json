@@ -2,7 +2,7 @@
 	"name": "cni-ss-qt1",
 	"label": "CNI Slice-Shuffled qT1 Mapping",
 	"description": "T1 fitting tool for data acquired with the slice-shuffled SMS IR-EPI sequence from CNI.",
-	"version": "0.4.13",
+	"version": "0.4.14",
 	"inputs": {
 		"nifti": {
 			"base": "file",
@@ -64,11 +64,6 @@
 			"default": 2,
 			"description": "Number of calibration volumes at the beginning of the NIFTI file. Use the config value unless cannot be derived from the nifti metadata",
 			"type": "number"
-		},
-		"use_B0map": {
-			"default": false,
-			"description": "Use B0 map for EPI distortion correction (instead of using the reverse phase encoding nifti)",
-			"type": "boolean"
 		},
 		"unwarp_direction": {
 			"default": "y-",

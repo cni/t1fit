@@ -27,18 +27,20 @@ if __name__ == '__main__':
     infile = config['inputs']['nifti']['location']['path']
     mask_threshold = config['config']['mask_threshold']    
     topup_method = config['config']['topup_method']
-    b0map_flag = config['config']['use_B0map']
     unwarp_direction = config['config']['unwarp_direction']
 
     if 'nifti_rpe' in config['inputs']:
         infile_pe1 = config['inputs']['nifti_rpe']['location']['path']
     else:
         infile_pe1 = ''
-    if 'b0map_flag':
+    if 'nifti_B0map_magnitude' in config['inputs']:
         infile_b0map_magnitude = config['inputs']['nifti_B0map_magnitude']['location']['path']
-        infile_b0map_frequency = config['inputs']['nifti_B0map_frequency']['location']['path']
-        if infile_b0map_magnitude == '' or infile_b0map_frequency == '':
-            raise AssertionError('B0map flag is selected but the magnitude or frequency nifti file is missing!')
+        if 'nifti_B0map_frequency' in config['inputs']:
+            infile_b0map_frequency = config['inputs']['nifti_B0map_frequency']['location']['path']
+        else:
+            raise AssertionError('B0map frequency NIFTI is missing.')
+    else:
+        infile_b0map_magnitude = ''
 
     metadata = config['inputs']['nifti']['object']['info']
     try:
@@ -80,21 +82,21 @@ if __name__ == '__main__':
     # Set output name
     outdir = '/flywheel/v0/output'
     outpath = os.path.join(outdir, basename)
-    if b0map_flag:  # use B0 map
+    if not infile_b0map_magnitude == '':  # use B0 map
         if descending_slices:
             cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map_magnitude {} --b0map_frequency {} --unwarpdir {} --descending_slices;".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map_magnitude, infile_b0map_frequency, unwarp_direction)
         else:
             cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map_magnitude {} --b0map_frequency {} --unwarpdir {};".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map_magnitude, infile_b0map_frequency, unwarp_direction)
-    elif infile_pe1 == '': # no fieldmap correction
-        if descending_slices:
-            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --method {} --descending_slices;".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, topup_method)
-        else:
-            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --method {};".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, topup_method)
-    else:  # use topup
+    elif not infile_pe1 == '': # use topup
         if descending_slices:
             cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -p {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --method {} --descending_slices".format(cmd, infile, outpath, infile_pe1, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, topup_method)
         else:
             cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -p {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --method {}".format(cmd, infile, outpath, infile_pe1, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, topup_method)
+    else:  # no fieldmap correction
+        if descending_slices:
+            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --descending_slices;".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume)
+        else:
+            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {};".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume)
 
     print(cmd)
     bash_command(cmd)

@@ -319,7 +319,13 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
     acq = np.mod(np.arange(ntis-1,-1,-1) - num_cal_trs, ntis)
     for sl in range(ntis):
        sl_acq[sl,:] = np.roll(acq, np.mod(sl,2)*math.ceil(ntis/2.)+int(sl/2)+1)
-    
+
+    # for multiband with even # slices, GE reverses the acquisition order of the last two slices in acq table (sl N and N-2), so need to reverse it here 
+    if mux > 1 and np.mod(ntis,2) == 0:
+       sl_acq[[-1,-3],:] = sl_acq[[-3,-1],:]
+
+    print("sl_acq {}".format(sl_acq))
+
     ti_acq = ti + sl_acq*tr/ntis
 
     d = ni.get_data()
