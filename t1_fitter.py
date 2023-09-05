@@ -42,15 +42,15 @@ class T1_fitter(object):
         if self.fit_method=='nlspr' or self.fit_method=='mag' or self.fit_method=='nls':
             self.init_nls(ti_vec)
         else:
-            self.ti_vec = np.array(ti_vec, dtype=np.float)
+            self.ti_vec = np.array(ti_vec, dtype=float)
 
     def init_nls(self, new_tis=None):
         if new_tis is not None:
-            self.ti_vec = np.matrix(new_tis, dtype=np.float)
+            self.ti_vec = np.matrix(new_tis, dtype=float)
         #else:
         #    self.ti_vec = np.matrix(self.ti_vec, dtype=np.float)
         n = self.ti_vec.size
-        self.t1_vec = np.matrix(np.arange(self.t1min, self.t1max+self.t1res, self.t1res, dtype=np.float))
+        self.t1_vec = np.matrix(np.arange(self.t1min, self.t1max+self.t1res, self.t1res, dtype=float))
         self.the_exp = np.exp(-self.ti_vec.T * np.matrix(1/self.t1_vec))
         self.exp_sum = 1. / n * self.the_exp.sum(0).T
         self.rho_norm_vec = np.sum(np.power(self.the_exp,2), 0).T - 1./n*np.power(self.the_exp.sum(0).T,2)
@@ -312,7 +312,7 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
         tr = ni._header.get_zooms()[3] * 1000.
     
     if not ntis:
-        ntis = int(ni.shape[2] / mux)
+        ntis = int(np.ceil(ni.shape[2] / mux))   # round up if the # slices is not a multiple of mux factor 
 
     num_cal_trs = mux_cycle_num * mux
     sl_acq = np.zeros((ntis,ntis))
@@ -330,6 +330,12 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
 
     d = ni.get_data()
     d = d[:,:,:,cal_vols:]
+    if d.shape[2]%mux != 0:  # if total # slices is not a multiple of mux factor, add empty slices to make a multiple of mux
+        print('WARNING: number of slices is indivisible by SMS factor, zero-padding in slice direction...')
+        sz = list(d.shape)
+        zero_pad = mux - sz[2]%mux
+        sz[2] = zero_pad
+        d = np.concatenate((d,np.zeros(sz,dtype=float)*np.nan), axis=2)
     if d.shape[3]<ntis:
         print('WARNING: Too few volumes! zero-padding...')
         sz = list(d.shape)
@@ -354,6 +360,10 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
             else:
                 vidx = np.argsort(tis[ntis-1-sl,:])
             d_sort[:,:,slidx,:] = d_sort[:,:,slidx,vidx]
+
+    if ni.shape[2]%mux != 0:  # if acquired total # slices is not a multiple of mux factor, remove the zero-padded slices
+        zero_pad = mux - ni.shape[2]%mux
+        d_sort = d_sort[:,:,:-zero_pad,:]
 
     ti_sort = np.sort(ti_acq[:,0])
     # The last measurement is junk due to the slice-shuffling
@@ -437,14 +447,14 @@ def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1
 
     #mask = np.ones_like(data[...,0])  # only when fsl.BET fails
     brain_inds = np.argwhere(mask) # for testing on some voxels: [0:10000,:]
-    t1 = np.zeros(mask.shape, dtype=np.float)
-    a = np.zeros(mask.shape, dtype=np.float)
-    b = np.zeros(mask.shape, dtype=np.float)
-    res = np.zeros(mask.shape, dtype=np.float)
+    t1 = np.zeros(mask.shape, dtype=float)
+    a = np.zeros(mask.shape, dtype=float)
+    b = np.zeros(mask.shape, dtype=float)
+    res = np.zeros(mask.shape, dtype=float)
     if err_method == 'lm':
-        r2  = np.zeros(mask.shape, dtype=np.float)
+        r2  = np.zeros(mask.shape, dtype=float)
     if err_method == 'ctk':
-        ctk = np.zeros(mask.shape, dtype=np.float)
+        ctk = np.zeros(mask.shape, dtype=float)
     
     print('Fitting T1 model...')
     fit = T1_fitter(tis, t1res, t1min, t1max, err_method, delete)

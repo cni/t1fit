@@ -2,7 +2,7 @@
 	"name": "cni-ss-qt1",
 	"label": "CNI Slice-Shuffled qT1 Mapping",
 	"description": "T1 fitting tool for data acquired with the slice-shuffled SMS IR-EPI sequence from CNI.",
-	"version": "0.4.14",
+	"version": "0.4.15",
 	"inputs": {
 		"nifti": {
 			"base": "file",
