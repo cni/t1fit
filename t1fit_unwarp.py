@@ -133,11 +133,11 @@ if __name__ == '__main__':
     arg_parser.add_argument('-m', '--mask', help='mask file (nifti) to use. If not provided, a simple mask will be computed.')
     arg_parser.add_argument('-b', '--bet_frac', type=float, default=0.5, help='bet fraction for FSL''s bet function (default is 0.5)')
     arg_parser.add_argument('--cal', type=int, default=2, help='number of calibration volumes at the beginning of the nifti file (default=2)')
-    arg_parser.add_argument('--tr', type=float, default=3000.0, help='TR of the slice-shuffled scan (in ms, default=3000.0)')
-    arg_parser.add_argument('--ti', type=float, default=50.0, help='for slice-shuffled data, provide the first TI (in ms, default=50.0)')
+    arg_parser.add_argument('--tr', type=float, default=3.0, help='TR of the slice-shuffled scan (in s, default=3.0)')
+    arg_parser.add_argument('--ti', type=float, default=0.05, help='for slice-shuffled data, provide the first TI (in s, default=0.05)')
     arg_parser.add_argument('--mux', type=int, default=3, help='number of SMS bands (mux factor) for slice-shuffeld data (default=3)')
     arg_parser.add_argument('--mux_cycle', type=int, default=2, help='Number of mux calibration cycles (default=2)')
-    arg_parser.add_argument('--esp', type=float, default=0.0, help='effective echo spacing (in seconds)')
+    arg_parser.add_argument('--esp', type=float, default=0.0005, help='effective echo spacing (in s, default=0.0005)')
     arg_parser.add_argument('--b0map_flag', action='store_true', help='flag for using B0map for distortion correction (default=false)')
     arg_parser.add_argument('--b0map_magnitude', default='', help='path to nifti file of the B0 fieldmap magnitude image for EPI distortion correction using FSL FUGUE.')
     arg_parser.add_argument('--b0map_frequency', default='', help='path to nifti file of the B0 fieldmap frequency image (unit is Hz) for EPI distortion correction using FSL FUGUE.')
@@ -152,8 +152,8 @@ if __name__ == '__main__':
     pe1_raw = args.pe1
     outbase = args.outbase
     cal_vols = args.cal
-    ti = args.ti
-    tr = args.tr
+    ti = args.ti*1000
+    tr = args.tr*1000  #convert ti, tr to ms
     mux = args.mux
     mux_cycle = args.mux_cycle
     esp = args.esp

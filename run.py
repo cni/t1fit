@@ -44,16 +44,22 @@ if __name__ == '__main__':
 
     metadata = config['inputs']['nifti']['object']['info']
     try:
-        if 'MUXRECON' in metadata:      # mux data reconstructed with muxrecon, 'MUXRECON' contains metadata in the json
-            TR  = metadata['MUXRECON']['tr']*1000
-            TI  = metadata['MUXRECON']['ti']*1000
+        if 'MUXRECON' in metadata:      # mux data reconstructed with muxrecon, 'MUXRECON' contains metadata in the json where TR, TI, esp are saved in seconds. 
+            TR  = metadata['MUXRECON']['tr']
+            TI  = metadata['MUXRECON']['ti']
             esp = metadata['MUXRECON']['effective_echo_spacing']
             mux = metadata['MUXRECON']['num_bands']
             mux_cycle = metadata['MUXRECON']['num_mux_cal_cycle']
             cal_volume = metadata['MUXRECON']['num_mux_cal_volumes_in_nifti']
-        else:     # product hyperband data, metadata parsed by dcm2niix
-            TR  = metadata['RepetitionTime']*1000
-            TI  = metadata['InversionTime']*1000
+        else:     # product hyperband data, metadata parsed by dcm2niix. Flywheel dcm2niix gear v1.4.4 parsed TR, TI in unit of ms instead of second, so check the units and convert them to seconds here
+            if metadata['RepetitionTime'] > 100:
+                import warnings
+                warnings.warn('Input TR (TI) unit is likely ms. Enforcing conversion to second. Double check calculted TIs.')
+                TR  = metadata['RepetitionTime']*0.001
+                TI  = metadata['InversionTime']*0.001
+            else:
+                TR  = metadata['RepetitionTime']
+                TI  = metadata['InversionTime']
             esp = metadata['EffectiveEchoSpacing']
             mux = metadata['MultibandAccelerationFactor']
             mux_cycle = 0
