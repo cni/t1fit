@@ -28,11 +28,12 @@ echo "Running B0 map correction... "
 $FSLDIR/bin/fslmaths $fmap_frq -mul 6.283 ${fmap_frq_outbase}_rad
 ## create brain mask from fmap magitude image, align/resample mask and fieldmap to the EPI image
 $FSLDIR/bin/bet $rest ${epi_outbase}_brain -f 0.2
-$FSLDIR/bin/bet $fmap_mag ${fmap_mag_outbase}_brain -m -f 0.6  # fmap_mag has low contrast, so need more aggressive brain mask parameter
+$FSLDIR/bin/bet $fmap_mag ${fmap_mag_outbase}_brain -m -f 0.55  # fmap_mag has low contrast, so need more aggressive brain mask parameter
 $FSLDIR/bin/flirt -in ${fmap_mag_outbase}_brain -ref ${epi_outbase}_brain -dof 6 -cost normmi -omat $xfm_fmap 
 $FSLDIR/bin/flirt -in ${fmap_frq_outbase}_rad -ref ${epi_outbase}_brain -applyxfm -init $xfm_fmap -out ${fmap_frq_outbase}_rad_resampled
 $FSLDIR/bin/flirt -in ${fmap_mag_outbase}_brain_mask -ref ${epi_outbase}_brain -applyxfm -init $xfm_fmap -out ${fmap_mag_outbase}_brain_mask_resampled
 ## fieldmap correction
 $FSLDIR/bin/fugue -i $rest --unwarpdir=$unwarpdir --dwell=$esp --loadfmap=${fmap_frq_outbase}_rad_resampled --mask=${fmap_mag_outbase}_brain_mask_resampled -u ${epi_outbase}_unwarped
-#
-echo "Completed B0 map correction. Corrected image is saved in ${epi_outbase}_unwarped.nii.gz  "
+## mask the EPI data using the fmap magnitude image mask
+$FSLDIR/bin/fslmaths ${epi_outbase}_unwarped -mas ${fmap_mag_outbase}_brain_mask_resampled ${epi_outbase}_unwarped_brain
+echo "Completed B0 map correction. Corrected (masked) image is saved in ${epi_outbase}_unwarped.nii.gz (${epi_outbase}_unwarped_brain.nii.gz)  "

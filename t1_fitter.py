@@ -88,17 +88,22 @@ class T1_fitter(object):
         data = np.array(data.ravel())
         n = data.shape[0]
 
+        # filter data and only use elements that is not Nan for the fitting
+        nn = np.isnan(data)==False
+        data_to_use = data[nn]
+        ti_to_use = self.ti_vec[nn]
+
         # Initialize fit values:
         # T1 tarting value is hard-coded here (TODO: something better! Quick coarse grid search using nlspr?)
         # k should be around 1 - cos(flip_angle) = 2
         # |c| is set to the sqrt of the data at the longest TI
-        max_val = (np.abs(data[np.argmax(self.ti_vec)]))
+        max_val = (np.abs(data_to_use[np.argmax(ti_to_use)]))
         x0 = np.array([900., 2., max_val])
 
         predicted = lambda t1,k,c,ti: np.abs( c*(1 - k * np.exp(-ti/t1)) )
         residuals = lambda x,ti,y: y - predicted(x[0], x[1], x[2], ti)
         #err = lambda x,ti,y: np.sum(np.abs(residuals(x,ti,y)))
-        x,extra = leastsq(residuals, x0, args=(self.ti_vec.T,data))
+        x,extra = leastsq(residuals, x0, args=(ti_to_use.T,data_to_use))
         # NOTE: I tried minimize with two different bounded search algorithms (SLSQP and L-BFGS-B), but neither worked very well.
         # An unbounded leastsq fit with subsequent clipping of crazy fit values seems to be the fastest and most robust.
         #x0_bounds = [[0.,5000.],[None,None],[0.,max_val*10.]]
@@ -109,11 +114,11 @@ class T1_fitter(object):
         c = x[2]
 
         # Compute the residual
-        y_hat = predicted(t1, k, c, self.ti_vec)
-        residual = np.power(y_hat - data.T, 2).sum()
+        y_hat = predicted(t1, k, c, ti_to_use)
+        residual = np.power(y_hat - data_to_use.T, 2).sum()
 
         # Compute the r-squared
-        SS_tot = np.power(data - data.mean(), 2).sum()
+        SS_tot = np.power(data_to_use - data_to_use.mean(), 2).sum()
         r_squared = 1 - residual/SS_tot
         # r_squared = r_squared.clip(0, 1)
 
@@ -328,7 +333,7 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
 
     ti_acq = ti + sl_acq*tr/ntis
 
-    d = ni.get_data()
+    d = np.asanyarray(ni.dataobj) #ni.get_data()
     d = d[:,:,:,cal_vols:]
     if d.shape[2]%mux != 0:  # if total # slices is not a multiple of mux factor, add empty slices to make a multiple of mux
         print('WARNING: number of slices is indivisible by SMS factor, zero-padding in slice direction...')
@@ -339,7 +344,7 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
     if d.shape[3]<ntis:
         print('WARNING: Too few volumes! zero-padding...')
         sz = list(d.shape)
-        zero_pad = ntis - sz[3]
+        zero_pad = ntis - sz[3] + 1 # add 1 extra volume so that the unshuffling does not use the first 2 volumes of the time series because those are in non-steady state
         sz[3] = zero_pad
         d = np.concatenate((d,np.zeros(sz,dtype=float)*np.nan), axis=3)
         #d[...,0:2] = np.zeros((sz[0],sz[1],sz[2],2),dtype=float)*np.nan
@@ -397,7 +402,7 @@ def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1
         data = np.zeros(ni.shape[0:3]+(len(infile),))
         for i in range(len(infile)):
             ni = nb.load(infile[i])
-            data[...,i] = np.squeeze(ni.get_data())
+            data[...,i] = np.squeeze(np.asanyarray(ni.dataobj)) #ni.get_data())
     else:
         if unshuffle:
             data,tis = unshuffle_slices(ni, mux, cal_vols=cal, mux_cycle_num=mux_cycle, ti=ti, tr=tr, keep=keep, descending=descending)
@@ -407,12 +412,12 @@ def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1
             if pixdim != None:
                 print('Resampling data to %0.1fmm^3 ...' % pixdim)
                 ni = resample(ni, pixdim)
-                data = ni.get_data()
+                data = np.asanyarray(ni.dataobj) #ni.get_data()
             nb.save(ni, outfiles['unshuffled'])
         else:
             if pixdim != None:
                 ni = resample(ni, pixdim)
-            data = ni.get_data()
+            data = np.asanyarray(ni.dataobj) #ni.get_data()
 
     #data = np.abs(data - 100)
     
@@ -430,13 +435,16 @@ def main(infile, outbase, mask=None, err_method='lm', fwhm=0.0, t1res=1, t1min=1
             #from dipy.segment.mask import median_otsu
             #masked_mn, mask = median_otsu(mn, 4, 4)
             from nipype.interfaces import fsl
-            fsl.ExtractROI(in_file=infile[0], roi_file=outbase+'_vol.nii.gz', t_min=0,t_size=1).run()
+            #fsl.ExtractROI(in_file=infile[0], roi_file=outbase+'_vol.nii.gz', t_min=0,t_size=1).run() # try fslmaths -Tmean 
+            fsl.ImageMaths(in_file=infile[0], op_string='-nan', out_file=outbase+'_zero.nii.gz').run() # replace nan with zeros
+            fsl.ImageMaths(in_file=outbase+'_zero.nii.gz', op_string='-Tmean', out_file=outbase+'_vol.nii.gz').run() 
             fsl.BET(in_file=outbase+'_vol.nii.gz', frac=bet_frac, mask=True, out_file=outbase+'_brain').run()
             mask = np.asanyarray(nb.load(outbase+'_brain_mask.nii.gz').dataobj)>0.5
         except:
             print('WARNING: failed to compute a mask. Fitting all voxels.')
             mask = np.ones(mn.shape, dtype=bool)
     elif mask.lower()=='none':
+        print('Not applying mask. Fitting all voxels.')
         mask = np.ones((data.shape[0],data.shape[1],data.shape[2]), dtype=bool)
     else:
         mask_ni = nb.load(mask)

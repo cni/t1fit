@@ -71,7 +71,7 @@ class UnwarpEpi(object):
         if cal.shape[2]%2:
             d = cal.get_data()
             d = np.concatenate((d,np.zeros((d.shape[0],d.shape[1],1,d.shape[3]), dtype=d.dtype)),axis=2)
-            cal = nb.Nifti1Image(d, cal.get_affine())
+            cal = nb.Nifti1Image(d, cal.affine)
         nb.save(cal, self.cal_file)
 
         # Write acquisition parameters to text file acq_file 
@@ -91,7 +91,7 @@ class UnwarpEpi(object):
                 if ni.get_header().get_data_shape()[2]%2:
                     im = ni.get_data()
                     im = np.concatenate((im,np.zeros((im.shape[0],im.shape[1],1,im.shape[3]), dtype=im.dtype)),axis=2)
-                    ni = nb.Nifti1Image(im, ni.get_affine())
+                    ni = nb.Nifti1Image(im, ni.affine)
                     nb.save(ni, f)
 
     def run_topup(self):
@@ -142,11 +142,11 @@ if __name__ == '__main__':
     arg_parser.add_argument('--b0map_magnitude', default='', help='path to nifti file of the B0 fieldmap magnitude image for EPI distortion correction using FSL FUGUE.')
     arg_parser.add_argument('--b0map_frequency', default='', help='path to nifti file of the B0 fieldmap frequency image (unit is Hz) for EPI distortion correction using FSL FUGUE.')
     arg_parser.add_argument('--unwarpdir', type=str, default='y', help='direction of B0 map unwarping. For A/P phase encoding, pe0: y (default), pe1: y-')
+    arg_parser.add_argument('--unwarp_t1map', action='store_true', help='flag for applying distortion correction to the fitted T1 map instead of the raw images (default=false)')
     arg_parser.add_argument('--descending_slices', action='store_true', help='Flag for descending or ascending slices (true=descending, false=ascending')
     arg_parser.add_argument('--method', type=str, default='jac', help='method for applytopup interpolation. ''jac'' for Jacobian when only one full SS scan (pe0) is done, or ''lsr'' for least-square resampling when both pe0 and pe1 SS scans are done (default is ''jac'')')
 
     args = arg_parser.parse_args()
-    print(args.descending_slices)
 
     pe0_raw = args.infile
     pe1_raw = args.pe1
@@ -171,31 +171,40 @@ if __name__ == '__main__':
     ni0 = nb.load(pe0_raw)
     data, tis = unshuffle_slices(ni0, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=mux_cycle, descending=args.descending_slices)
     print("Unshuffled slices, saved to {}. TIs: {}".format(pe0_unshuffled, tis.round(1).tolist()))
-    ni0 = nb.Nifti1Image(data, ni0.get_affine())
+    ni0 = nb.Nifti1Image(data, ni0.affine)
     nb.save(ni0, pe0_unshuffled+'.nii.gz')
     np.savetxt(outbase+'_TIs.txt', tis.round(1), delimiter=',', fmt='%.1f')
 
     # unwarp and fit T1
-    if args.b0map_flag:  # if using B0map
-        # generate separate volumes for magnitude and frequency images
-        #b0map_magnitude = outbase+'_b0map_magnitude'
-        #b0map_frequency = outbase+'_b0map_frequency'
-        #command = 'fslroi '+b0map+' '+b0map_magnitude+' 1 1; fslroi '+b0map+' '+b0map_frequency+' 0 1'
-        #os.system(command)
-        # fieldmap correction
-        print('Unwarping the unshuffled image using the B0map...')
-        command = './fsl-fmap-correction '+pe0_unshuffled+'.nii.gz '+b0map_magnitude+' '+b0map_frequency+' '+str(esp)+' '+unwarpdir+' '+outbase
-        print("command = {}".format(command))
-        os.system(command)
-        # fit T1
-        print('Fitting T1...')
-        t1_fit(infile=[unwarped+'.nii.gz'], outbase=t1fit_base, ti=tis, mask=args.mask, bet_frac=args.bet_frac)
+    if args.b0map_flag:
+        if not args.unwarp_t1map:  # if using B0map to correct unshuffled image
+            # generate separate volumes for magnitude and frequency images
+            #b0map_magnitude = outbase+'_b0map_magnitude'
+            #b0map_frequency = outbase+'_b0map_frequency'
+            #command = 'fslroi '+b0map+' '+b0map_magnitude+' 1 1; fslroi '+b0map+' '+b0map_frequency+' 0 1'
+            #os.system(command)
+            # fieldmap correction
+            print('Unwarping the unshuffled image using the B0map...')
+            command = './fsl-fmap-correction '+pe0_unshuffled+'.nii.gz '+b0map_magnitude+' '+b0map_frequency+' '+str(esp)+' '+unwarpdir+' '+outbase
+            print("command = {}".format(command))
+            os.system(command)
+            # fit T1
+            print('Fitting T1...')
+            t1_fit(infile=[unwarped+'.nii.gz'], outbase=t1fit_base, ti=tis, mask=args.mask, bet_frac=args.bet_frac)
+        else:   # if using B0map to correct T1map. Fit T1map first, then apply fieldmap correction
+            print('Fitting T1 without unwarping...')
+            t1_fit(infile=[pe0_unshuffled+'.nii.gz'], outbase=t1fit_base, ti=tis, mask=args.mask, bet_frac=args.bet_frac)
+            print('Unwarping the T1map using the B0map...')
+            command = './fsl-fmap-correction.sh '+t1fit_base+'_t1.nii.gz '+b0map_magnitude+' '+b0map_frequency+' '+str(esp)+' '+unwarpdir+' '+t1fit_base+'_t1'
+            print("command = {}".format(command))
+            os.system(command)
+
     elif pe1_raw:
         # when pe1 is provided, unshuffle pe1 data and then unwarp using both pe0 and pe1
         ni1 = nb.load(pe1_raw)
         data, tis = unshuffle_slices(ni1, mux, cal_vols=cal_vols, ti=ti, tr=tr, mux_cycle_num=args.mux_cycle, descending=args.descending_slices)
         print("Unshuffled slices, saved to {}.".format(pe1_unshuffled))
-        ni1 = nb.Nifti1Image(data, ni1.get_affine())
+        ni1 = nb.Nifti1Image(data, ni1.affine)
         nb.save(ni1, pe1_unshuffled+'.nii.gz')
 
         unwarper = UnwarpEpi(outbase, cal_vols)
@@ -214,7 +223,7 @@ if __name__ == '__main__':
  
     else:
         # if only pe0 images exist
-        print('No pe1 images provided, fitting T1 without unwarping...')
+        print('No reverse phase encoding image or B0map provided, fitting T1 without unwarping...')
         t1_fit(infile=[pe0_unshuffled+'.nii.gz'], outbase=t1fit_base, ti=tis, mask=args.mask, bet_frac=args.bet_frac)
 
 
