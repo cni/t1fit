@@ -329,7 +329,7 @@ def unshuffle_slices(ni, mux, cal_vols=2, mux_cycle_num=2, ti=None, tr=None, nti
     if mux > 1 and np.mod(ntis,2) == 0:
        sl_acq[[-1,-3],:] = sl_acq[[-3,-1],:]
 
-    print("sl_acq {}".format(sl_acq))
+    # print("sl_acq {}".format(sl_acq))
 
     ti_acq = ti + sl_acq*tr/ntis
 
