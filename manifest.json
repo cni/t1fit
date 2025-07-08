@@ -1,123 +1,139 @@
 {
-	"name": "cni-ss-qt1",
-	"label": "CNI Slice-Shuffled qT1 Mapping",
-	"description": "T1 fitting tool for data acquired with the slice-shuffled SMS IR-EPI sequence from CNI.",
-	"version": "0.5.0",
-	"inputs": {
-		"nifti": {
-			"base": "file",
-			"description": "NIFTI file from the qT1 scan",
-			"type": {
-				"enum": [
-					"nifti"
-				]
-			}
-		},
-		"nifti_rpe": {
-			"base": "file",
-			"description": "NIFTI file from the reverse phase encoding qT1 scan",
-			"optional": true,
-			"type": {
-				"enum": [
-					"nitfi"
-				]
-			}
-		},
-		"nifti_B0map_magnitude": {
-			"base": "file",
-			"description": "NIFTI file of the magnitude image from the B0 map scan (2D Fast GRE)",
-			"optional": true,
-			"type": {
-				"enum": [
-					"nifti"
-				]
-			}
-		},
-		"nifti_B0map_frequency": {
-			"base": "file",
-			"description": "NIFTI file of the frequency image from the B0 map scan (2D Fast GRE)",
-			"optional": true,
-			"type": {
-				"enum": [
-					"nifti"
-				]
-			}
-		}
-	},
-	"config": {
-		"TI": {
-			"default": 0.05,
-			"description": "Shortest TI of the slice-shuffled scan (second). Use the config value if cannot be derived from the nifti metadata",
-			"type": "number"
-		},
-		"TR": {
-			"default": 3,
-			"description": "TR of the slice-shuffled scan (second). Use the config value if cannot be derived from the nifti metadata",
-			"type": "number"
-		},
-		"calibration_cycle": {
-			"default": 2,
-			"description": "Number of calibration cycles at the beginning of data acquisition. Use the config value if cannot be derived from the nifti metadata",
-			"type": "number"
-		},
-		"calibration_volume": {
-			"default": 2,
-			"description": "Number of calibration volumes at the beginning of the NIFTI file. Use the config value if cannot be derived from the nifti metadata",
-			"type": "number"
-		},
-		"unwarp_direction": {
-			"default": "y-",
-			"description": "Direction of the EPI distortion correction. The definition is as follows: phase encoding (PE) direction = A/P, PE polarity = 0 (pe0), then unwarp_direction = y; PE direction = A/P, PE polarity = 1 (pe1), then unwarp_direction = y- (default); PE direction = R/L, PE polarity = 0, then unwarp_direction = x; PE direction = R/L, PE polarity = 1, then unwarp_direction = x-",
-			"enum": [
-                                "x",
-                                "x-",
-				"y",
-				"y-"
-			],
-			"type": "string"
-		},
-		"descending_slices": {
-			"default": true,
-			"description": "Descending or ascending slice acquisition. Use the config value if cannot be derived from the nifti metadata",
-			"type": "boolean"
-		},
-		"esp": {
-			"default": 0.0005,
-			"description": "Effective echo spacing (second). Use the config value if cannot be derived from the nifti metadata",
-			"type": "number"
-		},
-		"mask_threshold": {
-			"default": 0.5,
-			"description": "Fractional intensity threshold (0-\u003e1); smaller values give larger brain outline estimates",
-			"type": "number"
-		},
-		"multiband_factor": {
-			"default": 3,
-			"description": "Multiband factor of the slice-shuffled scan",
-			"type": "number"
-		},
-		"topup_method": {
-			"default": "jac",
-			"description": "Algorithm used for applytopup. 'jac' for Jacobian, 'lsr' for least-square resampling",
-			"enum": [
-				"jac",
-				"lsr"
-			],
-			"type": "string"
-		}
-	},
-	"author": "Hua Wu",
-	"maintainer": "Hua Wu",
-	"license": "Other",
-	"source": "https://github.com/cni/t1fit",
-	"url": "",
-	"custom": {
-		"gear-builder": {
-			"category": "analysis",
-			"image": "cni-ss-qt1"
-		},
-                "flywheel": {
-                        "suite": "Stanford CNI"
-                }
-	}
+  "name": "cni-ss-qt1",
+  "label": "CNI Slice-Shuffled qT1 Mapping",
+  "description": "T1 fitting tool for data acquired with the slice-shuffled SMS IR-EPI sequence from CNI.",
+  "version": "0.6.1",
+  "inputs": {
+    "nifti": {
+      "base": "file",
+      "description": "NIFTI file from the qT1 scan",
+      "type": {
+        "enum": [
+          "nifti"
+        ]
+      }
+    },
+    "nifti_rpe": {
+      "base": "file",
+      "description": "NIFTI file from the reverse phase encoding qT1 scan",
+      "optional": true,
+      "type": {
+        "enum": [
+          "nitfi"
+        ]
+      }
+    },
+    "nifti_B0map_magnitude": {
+      "base": "file",
+      "description": "NIFTI file of the magnitude image from the B0 map scan (2D Fast GRE)",
+      "optional": true,
+      "type": {
+        "enum": [
+          "nifti"
+        ]
+      }
+    },
+    "nifti_B0map_frequency": {
+      "base": "file",
+      "description": "NIFTI file of the frequency image from the B0 map scan (2D Fast GRE)",
+      "optional": true,
+      "type": {
+        "enum": [
+          "nifti"
+        ]
+      }
+    }
+  },
+  "config": {
+    "TI": {
+      "default": 0.05,
+      "description": "Shortest TI of the slice-shuffled scan (second). Use the config value if cannot be derived from the nifti metadata",
+      "type": "number"
+    },
+    "TR": {
+      "default": 3,
+      "description": "TR of the slice-shuffled scan (second). Use the config value if cannot be derived from the nifti metadata",
+      "type": "number"
+    },
+    "calibration_cycle": {
+      "default": 2,
+      "description": "Number of calibration cycles at the beginning of data acquisition. Use the config value if cannot be derived from the nifti metadata",
+      "type": "number"
+    },
+    "calibration_volume": {
+      "default": 2,
+      "description": "Number of calibration volumes at the beginning of the NIFTI file. Use the config value if cannot be derived from the nifti metadata",
+      "type": "number"
+    },
+    "unwarp_direction": {
+      "default": "y-",
+      "description": "Direction of the EPI distortion correction. The definition is as follows: phase encoding (PE) direction = A/P, PE polarity = 0 (pe0), then unwarp_direction = y; PE direction = A/P, PE polarity = 1 (pe1), then unwarp_direction = y- (default); PE direction = R/L, PE polarity = 0, then unwarp_direction = x; PE direction = R/L, PE polarity = 1, then unwarp_direction = x-",
+      "enum": [
+        "x",
+        "x-",
+        "y",
+        "y-"
+      ],
+      "type": "string"
+    },
+    "unwarp_t1map": {
+      "default": false,
+      "description": "Flag for applying B0map correction to the T1map. Default is false (B0map correction is applied to the unshuffled images). Use this only when there are missing volumes in the acquisition.",
+      "type": "boolean"
+    },
+    "descending_slices": {
+      "default": true,
+      "description": "Descending or ascending slice acquisition. Use the config value if cannot be derived from the nifti metadata",
+      "type": "boolean"
+    },
+    "esp": {
+      "default": 0.0005,
+      "description": "Effective echo spacing (second). Use the config value if cannot be derived from the nifti metadata",
+      "type": "number"
+    },
+    "mask_threshold": {
+      "default": 0.5,
+      "description": "Fractional intensity threshold (0->1); smaller values give larger brain outline estimates",
+      "type": "number"
+    },
+    "multiband_factor": {
+      "default": 3,
+      "description": "Multiband factor of the slice-shuffled scan",
+      "type": "number"
+    },
+    "topup_method": {
+      "default": "jac",
+      "description": "Algorithm used for applytopup. 'jac' for Jacobian, 'lsr' for least-square resampling",
+      "enum": [
+        "jac",
+        "lsr"
+      ],
+      "type": "string"
+    }
+  },
+  "author": "Hua Wu",
+  "maintainer": "Hua Wu",
+  "license": "Other",
+  "source": "https://github.com/cni/t1fit",
+  "url": "",
+  "custom": {
+    "gear-builder": {
+      "category": "analysis",
+      "image": "cni-ss-qt1"
+    },
+    "flywheel": {
+      "suite": "Stanford CNI"
+    }
+  },
+  "environment": {
+    "GPG_KEY": "A035C8C19219BA821ECEA86B64E628F8D684696D",
+    "PYTHON_SHA256": "ae665bc678abd9ab6a6e1573d2481625a53719bc517e9a634ed2b9fefae3817f",
+    "FSLDIR": "/opt/fsl",
+    "FLYWHEEL": "/flywheel/v0",
+    "PATH": "/opt/fsl/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "FSLOUTPUTTYPE": "NIFTI_GZ",
+    "LANG": "C.UTF-8",
+    "PYTHON_VERSION": "3.10.18",
+    "PWD": "/flywheel/v0"
+  }
 }

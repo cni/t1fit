@@ -14,8 +14,8 @@ if __name__ == '__main__':
     #os.system("more {}".format(config_file))
 
     # Configure the ENV
-    cmd = 'chmod +x /etc/fsl/5.0/fsl.sh;'
-    cmd = '{} source /etc/fsl/5.0/fsl.sh;'.format(cmd)
+    #cmd = 'chmod +x /etc/fsl/5.0/fsl.sh;'
+    #cmd = '{} source /etc/fsl/5.0/fsl.sh;'.format(cmd)
     #cmd = '{} echo ${{FSLDIR}};'.format(cmd)
 
     if not os.path.isfile(config_file):
@@ -28,6 +28,7 @@ if __name__ == '__main__':
     mask_threshold = config['config']['mask_threshold']    
     topup_method = config['config']['topup_method']
     unwarp_direction = config['config']['unwarp_direction']
+    unwarp_t1map = config['config']['unwarp_t1map']
 
     if 'nifti_rpe' in config['inputs']:
         infile_pe1 = config['inputs']['nifti_rpe']['location']['path']
@@ -90,19 +91,25 @@ if __name__ == '__main__':
     outpath = os.path.join(outdir, basename)
     if not infile_b0map_magnitude == '':  # use B0 map
         if descending_slices:
-            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map_magnitude {} --b0map_frequency {} --unwarpdir {} --descending_slices;".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map_magnitude, infile_b0map_frequency, unwarp_direction)
-        else:
-            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map_magnitude {} --b0map_frequency {} --unwarpdir {};".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map_magnitude, infile_b0map_frequency, unwarp_direction)
+            if unwarp_t1map:   # apply B0 map correction to T1 map
+                cmd = "python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map_magnitude {} --b0map_frequency {} --unwarpdir {} --descending_slices --unwarp_t1map;".format(infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map_magnitude, infile_b0map_frequency, unwarp_direction)
+            else:   # apply B0 map correction to unshuffled image
+                cmd = "python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map_magnitude {} --b0map_frequency {} --unwarpdir {} --descending_slices;".format(infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map_magnitude, infile_b0map_frequency, unwarp_direction)
+        else: 
+            if unwarp_t1map:  
+                cmd = "python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map_magnitude {} --b0map_frequency {} --unwarpdir {} --unwarp_t1map;".format(infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map_magnitude, infile_b0map_frequency, unwarp_direction)
+            else:   
+                cmd = "python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --b0map_flag --b0map_magnitude {} --b0map_frequency {} --unwarpdir {};".format(infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, infile_b0map_magnitude, infile_b0map_frequency, unwarp_direction)
     elif not infile_pe1 == '': # use topup
         if descending_slices:
-            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -p {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --method {} --descending_slices".format(cmd, infile, outpath, infile_pe1, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, topup_method)
+            cmd = "python3 /flywheel/v0/t1fit_unwarp.py {} {} -p {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --method {} --descending_slices".format(infile, outpath, infile_pe1, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, topup_method)
         else:
-            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -p {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --method {}".format(cmd, infile, outpath, infile_pe1, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, topup_method)
+            cmd = "python3 /flywheel/v0/t1fit_unwarp.py {} {} -p {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --esp {} --method {}".format(infile, outpath, infile_pe1, mask_threshold, TR, TI, mux, mux_cycle, cal_volume, esp, topup_method)
     else:  # no fieldmap correction
         if descending_slices:
-            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --descending_slices;".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume)
+            cmd = "python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {} --descending_slices;".format(infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume)
         else:
-            cmd = "{} python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {};".format(cmd, infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume)
+            cmd = "python3 /flywheel/v0/t1fit_unwarp.py {} {} -b {} --tr {} --ti {} --mux {} --mux_cycle {} --cal {};".format(infile, outpath, mask_threshold, TR, TI, mux, mux_cycle, cal_volume)
 
     print(cmd)
     bash_command(cmd)
